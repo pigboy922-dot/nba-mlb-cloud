@@ -1,4 +1,3 @@
-
 import json
 import os
 from datetime import datetime, timedelta
@@ -143,25 +142,35 @@ def calc_summary(rows: List[Dict[str, Any]], result_col: str, mode: str) -> Dict
     current_month = (now.year, now.month)
     weekday = now.weekday()
     week_start = datetime(now.year, now.month, now.day) - timedelta(days=weekday)
+
     win = lose = push = 0
     for row in rows:
-      dt = parse_date(clean_str(row.get('比賽日期')))
-      if not dt:
-          continue
-      if mode == 'week' and dt < week_start:
-          continue
-      if mode == 'month' and (dt.year, dt.month) != current_month:
-          continue
-      result = clean_str(row.get(result_col)).upper()
-      if result == 'WIN':
-          win += 1
-      elif result == 'LOSE':
-          lose += 1
-      elif result == 'PUSH':
-          push += 1
+        dt = parse_date(clean_str(row.get('比賽日期')))
+        if not dt:
+            continue
+        if mode == 'week' and dt < week_start:
+            continue
+        if mode == 'month' and (dt.year, dt.month) != current_month:
+            continue
+
+        result = clean_str(row.get(result_col)).upper()
+        if result == 'WIN':
+            win += 1
+        elif result == 'LOSE':
+            lose += 1
+        elif result == 'PUSH':
+            push += 1
+
     graded = win + lose
     rate = round(win / graded * 100, 1) if graded else 0.0
-    return {'win': win, 'lose': lose, 'push': push, 'graded': graded, 'rate': rate}
+
+    return {
+        'win': win,
+        'lose': lose,
+        'push': push,
+        'graded': graded,
+        'rate': rate
+    }
 
 
 @app.get('/ping')
@@ -169,7 +178,8 @@ def ping():
     return jsonify({'ok': True, 'time': taipei_now().strftime('%Y-%m-%d %H:%M:%S')})
 
 
-@app.post('/init_sheet')
+# ✅ 已修改這裡（支援 GET + POST）
+@app.route('/init_sheet', methods=['GET', 'POST'])
 def init_sheet():
     payload = request.get_json(silent=True) or {}
     league = clean_str(payload.get('聯盟') or request.args.get('league') or 'NBA')
@@ -187,22 +197,28 @@ def save_result():
     err = validate_payload(payload)
     if err:
         return jsonify({'ok': False, 'error': err}), 400
+
     try:
         league = clean_str(payload.get('聯盟'))
         season = clean_str(payload.get('賽季')) or get_season_year(league, clean_str(payload.get('比賽日期')))
         payload['賽季'] = season
         payload.setdefault('更新時間', taipei_now().strftime('%Y-%m-%d %H:%M:%S'))
+
         ws = get_or_create_sheet(league, season)
         row = payload_to_row(payload)
+
         row_no = find_row_by_game_id(ws, clean_str(payload.get('比賽ID')))
         end_col = gspread.utils.rowcol_to_a1(1, len(HEADERS)).split('1')[0]
+
         if row_no:
             ws.update(f'A{row_no}:{end_col}{row_no}', [row])
             action = 'updated'
         else:
             ws.append_row(row, value_input_option='USER_ENTERED')
             action = 'inserted'
-        return jsonify({'ok': True, 'action': action, 'sheet': ws.title, '比賽ID': clean_str(payload.get('比賽ID'))})
+
+        return jsonify({'ok': True, 'action': action})
+
     except Exception as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 500
 
@@ -211,15 +227,22 @@ def save_result():
 def stats():
     league = clean_str(request.args.get('league') or 'NBA')
     season = clean_str(request.args.get('season') or str(taipei_now().year))
+
     try:
         ws = get_or_create_sheet(league, season)
         rows = ws.get_all_records(expected_headers=HEADERS)
-        summary = {col: {
-            'week': calc_summary(rows, col, 'week'),
-            'month': calc_summary(rows, col, 'month'),
-            'season': calc_summary(rows, col, 'season'),
-        } for col in RESULT_COLUMNS}
-        return jsonify({'ok': True, 'sheet': ws.title, 'rows': rows, 'summary': summary, 'headers': HEADERS})
+
+        summary = {
+            col: {
+                'week': calc_summary(rows, col, 'week'),
+                'month': calc_summary(rows, col, 'month'),
+                'season': calc_summary(rows, col, 'season'),
+            }
+            for col in RESULT_COLUMNS
+        }
+
+        return jsonify({'ok': True, 'summary': summary})
+
     except Exception as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 500
 
@@ -228,16 +251,13 @@ def stats():
 def results():
     league = clean_str(request.args.get('league') or 'NBA')
     season = clean_str(request.args.get('season') or str(taipei_now().year))
-    limit_raw = request.args.get('limit', '200')
-    try:
-        limit = max(1, min(1000, int(limit_raw)))
-    except ValueError:
-        limit = 200
+
     try:
         ws = get_or_create_sheet(league, season)
         rows = ws.get_all_records(expected_headers=HEADERS)
-        rows = list(reversed(rows))[:limit]
-        return jsonify({'ok': True, 'sheet': ws.title, 'rows': rows})
+        rows = list(reversed(rows))[:200]
+        return jsonify({'ok': True, 'rows': rows})
+
     except Exception as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 500
 
