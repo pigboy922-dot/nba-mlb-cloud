@@ -1,0 +1,1335 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NBA / MLB 手機版 全部顯示版</title>
+  <style>
+    :root { --bg:#eef2f6; --card:#fcfcf8; --text:#243447; --muted:#6b7280; --line:#dde4dc; --btn:#3d6f8e; --btn2:#5d7f6f; --accent:#f6f7ef; --alert:#c56a2d; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:"Microsoft JhengHei","PingFang TC","Noto Sans TC",Arial,sans-serif; background:linear-gradient(180deg,#eef2f6 0%,#f7f8f5 100%); color:var(--text); line-height:1.5; }
+    .wrap { max-width:760px; margin:0 auto; padding:14px; }
+    .toolbar,.card { background:rgba(252,252,248,.96); border:1px solid var(--line); border-radius:18px; box-shadow:0 8px 24px rgba(36,52,71,.06); }
+    .toolbar { padding:14px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:14px; position:sticky; top:0; z-index:9; backdrop-filter:blur(8px); }
+    h1 { font-size:20px; width:100%; margin:0 0 2px 0; color:#2e465c; letter-spacing:.3px; }
+    button { border:0; border-radius:12px; padding:11px 15px; color:#fff; cursor:pointer; font-size:15px; font-weight:700; letter-spacing:.2px; }
+    button:disabled { opacity:.65; cursor:not-allowed; }
+    .btn-primary { background:var(--btn); }
+    .btn-secondary { background:var(--btn2); }
+    .muted { color:var(--muted); font-size:13px; }
+    .status { width:100%; }
+    .league-toggle { display:inline-flex; align-items:center; gap:6px; padding:8px 11px; border:1px solid var(--line); border-radius:999px; background:#f6f8f5; font-size:14px; color:#415467; }    .grid { display:grid; gap:14px; }
+    .match { padding:14px; }
+    .topline { display:flex; justify-content:space-between; gap:8px; align-items:flex-start; flex-wrap:wrap; margin-bottom:10px; }
+    .title { font-size:18px; font-weight:800; line-height:1.35; }
+    .sub { color:var(--muted); font-size:13px; margin-top:2px; }
+    .tag { display:inline-block; border:1px solid #d9e0d8; background:#f7f8f3; border-radius:999px; padding:5px 10px; font-size:12px; color:#42556a; font-weight:700; }
+    .error { color:#b91c1c; background:#fef2f2; border:1px solid #fecaca; padding:11px 13px; border-radius:12px; }
+    .note { color:#92400e; background:#fffbeb; border:1px solid #fde68a; padding:11px 13px; border-radius:12px; }
+    .versus-card { margin-top:10px; border:1px solid var(--line); border-radius:18px; overflow:hidden; background:#f7f8f2; }
+    .versus-head { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; text-align:center; background:#eef1e6; border-bottom:1px solid var(--line); }
+    .versus-team-title { padding:14px 10px; font-size:19px; font-weight:800; color:#34546f; letter-spacing:.3px; }
+    .versus-time { padding:14px 10px; font-size:15px; color:#667085; font-weight:700; white-space:nowrap; }
+    .versus-table { width:100%; border-collapse:collapse; table-layout:fixed; }
+    .versus-table td { border-bottom:1px solid #e0e5db; padding:11px 9px; text-align:center; font-size:14px; background:#fbfbf7; }
+    .versus-table tr:nth-child(even) td:not(.stat-name) { background:#f8f9f4; }
+    .versus-table tr:last-child td { border-bottom:0; }
+    .stat-name { color:#667085; width:30%; background:#eff2e8 !important; font-size:14px; }
+    .team-side { width:35%; }
+    .small-top { font-size:12px; color:#7b8669; font-weight:700; display:block; margin-bottom:2px; }
+    .team-role { color:#556271; font-size:13px; margin-left:4px; }
+    .stat-main { font-size:17px; font-weight:800; color:#314256; letter-spacing:.2px; }
+    .net-positive { color:#c2410c; font-weight:900; }
+    .sum-alert { color:var(--alert); }
+    .footer-note { margin-top:9px; font-size:12px; color:var(--muted); }
+    .bet-box { margin-top:10px; padding:11px 12px; border:1px solid var(--line); border-radius:14px; background:#f8faf6; }
+    .bet-head { display:flex; justify-content:space-between; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:6px; }
+    .bet-pick { font-weight:800; color:#2e465c; }
+    .bet-meta { font-size:12px; color:#667085; }
+    .bet-sub { font-size:13px; color:#556271; margin-top:4px; }
+    .bet-strong { color:#b45309; }
+    .bet-pass { color:#6b7280; }
+    .mark-red { color:#b91c1c; font-weight:800; }
+    .window-note {
+      width:100%;
+      font-size:13px;
+      color:#556271;
+      padding:4px 2px 0;
+    }
+
+    .page-tabs { width:100%; display:flex; gap:8px; }
+    .page-tab { flex:1; background:#e8edf1; color:#355067; border:1px solid var(--line); }
+    .page-tab.active { background:#345a74; color:#fff; border-color:#345a74; box-shadow:0 6px 16px rgba(52,90,116,.18); }
+    .page-panel.hidden { display:none; }
+    .record-summary {
+      width:100%;
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:10px;
+    }
+    .record-pill {
+      background:#f7f8f3;
+      border:1px solid var(--line);
+      border-radius:18px;
+      padding:14px 12px;
+      text-align:center;
+    }
+    .record-pill b {
+      display:block;
+      font-size:17px;
+      color:#2e465c;
+      margin-bottom:4px;
+    }
+    .record-pill span {
+      font-size:13px;
+      color:#667085;
+    }
+
+    @media (max-width: 640px) {
+      .wrap { padding:10px; }
+      .toolbar { padding:12px; gap:8px; }
+      h1 { font-size:18px; }
+      button { font-size:14px; padding:10px 13px; }
+      .versus-team-title { font-size:16px; padding:12px 6px; }
+      .versus-time { font-size:14px; padding:12px 4px; }
+      .versus-table td { padding:10px 6px; }
+      .stat-name { font-size:13px; }
+      .stat-main { font-size:16px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="toolbar">
+      <h1>NBA / MLB 手機版</h1>
+      <div class="page-tabs">
+        <button class="page-tab active" id="recommendTabBtn" type="button">推薦頁</button>
+        <button class="page-tab" id="near10TabBtn" type="button">近10分頁</button>
+        <button class="page-tab" id="statsTabBtn" type="button">統計頁</button>
+      </div>
+      <label class="league-toggle"><input type="checkbox" id="nbaToggle" checked> NBA</label>
+      <label class="league-toggle"><input type="checkbox" id="mlbToggle" checked> MLB</label>
+      <button class="btn-primary" id="todayBtn">更新今天</button>
+      <button class="btn-secondary" id="tomorrowBtn">更新明天</button>
+      <div class="window-note" id="windowNote">目前顯示：分主客＋NBA休息天數＋MLB投手代理；NBA讓分|EDGE|≥6/大小≥10，MLB|EDGE|≥3</div>
+      <div class="status muted" id="status">尚未更新</div>
+    </div>
+    <div id="recommendPage" class="page-panel">
+      <div id="content" class="grid"></div>
+    </div>
+    <div id="near10Page" class="page-panel hidden">
+      <div class="card match">
+        <div class="topline">
+          <div>
+            <div class="title">近10 / 主客近10 分頁</div>
+            <div class="sub">這頁只看近10場與主客近10場，不跟EDGE混一起</div>
+          </div>
+        </div>
+        <div class="status muted" id="near10Status">尚未更新</div>
+      </div>
+      <div id="near10Content" class="grid"></div>
+    </div>
+    <div id="statsPage" class="page-panel hidden">
+      <div class="card match">
+        <div class="topline">
+          <div>
+            <div class="title">模型勝率統計</div>
+            <div class="sub">統計獨立分頁；雲端失敗不影響推薦頁</div>
+          </div>
+        </div>
+        <div class="record-summary" id="recordSummary">
+          <div class="record-pill"><b>EDGE讓分</b><span id="statEdgeSpreadRate">週0%｜月0%｜季0%</span></div>
+          <div class="record-pill"><b>EDGE大小</b><span id="statEdgeTotalRate">週0%｜月0%｜季0%</span></div>
+          <div class="record-pill"><b>近10讓分</b><span id="statL10SpreadRate">週0%｜月0%｜季0%</span></div>
+          <div class="record-pill"><b>主客讓分</b><span id="statHASpreadRate">週0%｜月0%｜季0%</span></div>
+          <div class="record-pill"><b>近10大小淨值</b><span id="statL10TotalNetRate">週0%｜月0%｜季0%</span></div>
+          <div class="record-pill"><b>近10大小相加</b><span id="statL10TotalSumRate">週0%｜月0%｜季0%</span></div>
+          <div class="record-pill"><b>主客大小淨值</b><span id="statHATotalNetRate">週0%｜月0%｜季0%</span></div>
+          <div class="record-pill"><b>主客大小相加</b><span id="statHATotalSumRate">週0%｜月0%｜季0%</span></div>
+        </div>
+        <div class="footer-note" id="statsStatus">統計頁會優先讀雲端，抓不到才改讀本機備援。</div>
+      </div>
+    </div>
+  </div>
+<script>
+const contentEl = document.getElementById('content');
+const statusEl = document.getElementById('status');
+const nbaToggle = document.getElementById('nbaToggle');
+const mlbToggle = document.getElementById('mlbToggle');
+const todayBtn = document.getElementById('todayBtn');
+const tomorrowBtn = document.getElementById('tomorrowBtn');
+const windowNote = document.getElementById('windowNote');
+const recommendTabBtn = document.getElementById('recommendTabBtn');
+const near10TabBtn = document.getElementById('near10TabBtn');
+const statsTabBtn = document.getElementById('statsTabBtn');
+const recommendPage = document.getElementById('recommendPage');
+const near10Page = document.getElementById('near10Page');
+const statsPage = document.getElementById('statsPage');
+const near10ContentEl = document.getElementById('near10Content');
+const near10StatusEl = document.getElementById('near10Status');
+const statsStatusEl = document.getElementById('statsStatus');
+
+const CONFIG = {
+  nba: { key:'nba', name:'NBA', sport:'basketball', league:'nba', lookbackDays:40, totalEdge:8, spreadEdge:3.5, highTotal:235 },
+  mlb: { key:'mlb', name:'MLB', sport:'baseball', league:'mlb', lookbackDays:25, totalEdge:1.2, spreadEdge:0.8, highTotal:11.5 }
+};
+
+const TEAM_NAME_ZH = {
+  nba: {'Atlanta Hawks':'亞特蘭大老鷹','Boston Celtics':'波士頓塞爾提克','Brooklyn Nets':'布魯克林籃網','Charlotte Hornets':'夏洛特黃蜂','Chicago Bulls':'芝加哥公牛','Cleveland Cavaliers':'克里夫蘭騎士','Dallas Mavericks':'達拉斯獨行俠','Denver Nuggets':'丹佛金塊','Detroit Pistons':'底特律活塞','Golden State Warriors':'金州勇士','Houston Rockets':'休士頓火箭','Indiana Pacers':'印第安納溜馬','LA Clippers':'洛杉磯快艇','Los Angeles Clippers':'洛杉磯快艇','Los Angeles Lakers':'洛杉磯湖人','LA Lakers':'洛杉磯湖人','Memphis Grizzlies':'曼菲斯灰熊','Miami Heat':'邁阿密熱火','Milwaukee Bucks':'密爾瓦基公鹿','Minnesota Timberwolves':'明尼蘇達灰狼','New Orleans Pelicans':'紐奧良鵜鶘','New York Knicks':'紐約尼克','Oklahoma City Thunder':'奧克拉荷馬雷霆','Orlando Magic':'奧蘭多魔術','Philadelphia 76ers':'費城76人','Phoenix Suns':'鳳凰城太陽','Portland Trail Blazers':'波特蘭拓荒者','Sacramento Kings':'沙加緬度國王','San Antonio Spurs':'聖安東尼奧馬刺','Toronto Raptors':'多倫多暴龍','Utah Jazz':'猶他爵士','Washington Wizards':'華盛頓巫師'},
+  mlb: {'Arizona Diamondbacks':'亞利桑那響尾蛇','Athletics':'運動家','Oakland Athletics':'奧克蘭運動家','Atlanta Braves':'亞特蘭大勇士','Baltimore Orioles':'巴爾的摩金鶯','Boston Red Sox':'波士頓紅襪','Chicago Cubs':'芝加哥小熊','Chicago White Sox':'芝加哥白襪','Cincinnati Reds':'辛辛那提紅人','Cleveland Guardians':'克里夫蘭守護者','Colorado Rockies':'科羅拉多落磯','Detroit Tigers':'底特律老虎','Houston Astros':'休士頓太空人','Kansas City Royals':'堪薩斯市皇家','Los Angeles Angels':'洛杉磯天使','Los Angeles Dodgers':'洛杉磯道奇','Miami Marlins':'邁阿密馬林魚','Milwaukee Brewers':'密爾瓦基釀酒人','Minnesota Twins':'明尼蘇達雙城','New York Mets':'紐約大都會','New York Yankees':'紐約洋基','Philadelphia Phillies':'費城費城人','Pittsburgh Pirates':'匹茲堡海盜','San Diego Padres':'聖地牙哥教士','San Francisco Giants':'舊金山巨人','Seattle Mariners':'西雅圖水手','St. Louis Cardinals':'聖路易紅雀','Tampa Bay Rays':'坦帕灣光芒','Texas Rangers':'德州遊騎兵','Toronto Blue Jays':'多倫多藍鳥','Washington Nationals':'華盛頓國民'}
+};
+
+const scoreboardCache = new Map();
+let currentOffsetDays = 0;
+
+const CLOUD_API_BASE = window.CLOUD_API_BASE || 'https://YOUR-RENDER-URL.onrender.com';
+const RECORD_STORAGE_KEY = 'nba_mlb_models_daily_results_v2';
+const MODEL_LABELS = {
+  'EDGE讓分結果':'statEdgeSpreadRate',
+  'EDGE大小結果':'statEdgeTotalRate',
+  '近10讓分結果':'statL10SpreadRate',
+  '主客讓分結果':'statHASpreadRate',
+  '近10大小_淨值結果':'statL10TotalNetRate',
+  '近10大小_相加結果':'statL10TotalSumRate',
+  '主客大小_淨值結果':'statHATotalNetRate',
+  '主客大小_相加結果':'statHATotalSumRate'
+};
+function setActivePage(page) {
+  const showRecommend = page === 'recommend';
+  const showNear10 = page === 'near10';
+  const showStats = page === 'stats';
+  recommendPage.classList.toggle('hidden', !showRecommend);
+  near10Page.classList.toggle('hidden', !showNear10);
+  statsPage.classList.toggle('hidden', !showStats);
+  recommendTabBtn.classList.toggle('active', showRecommend);
+  near10TabBtn.classList.toggle('active', showNear10);
+  statsTabBtn.classList.toggle('active', showStats);
+  if (showStats) updateRecordSummary();
+}
+function getSeasonYearByLeague(leagueName, iso) {
+  const d = new Date(iso || Date.now());
+  const y = Number(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',year:'numeric'}).format(d));
+  const m = Number(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Taipei',month:'2-digit'}).format(d));
+  if (leagueName === 'NBA') return m >= 9 ? y + 1 : y;
+  return y;
+}
+function toTaipeiDateKey(iso) {
+  if (!iso) return '';
+  return new Intl.DateTimeFormat('en-CA', { timeZone:'Asia/Taipei', year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date(iso));
+}
+function toFinalScoreText(event) {
+  const competitors = ((event?.competitions?.[0]?.competitors) || []).slice().sort((a,b)=>{
+    if (a.homeAway === 'away') return -1;
+    if (b.homeAway === 'away') return 1;
+    return 0;
+  });
+  if (competitors.length < 2) return '';
+  const leftScore = Number(competitors[0]?.score);
+  const rightScore = Number(competitors[1]?.score);
+  if (!Number.isFinite(leftScore) || !Number.isFinite(rightScore)) return '';
+  return `${leftScore}:${rightScore}`;
+}
+function readRecordStore() {
+  try { return JSON.parse(localStorage.getItem(RECORD_STORAGE_KEY) || '{}'); }
+  catch (err) { return {}; }
+}
+function writeRecordStore(data) {
+  localStorage.setItem(RECORD_STORAGE_KEY, JSON.stringify(data));
+}
+function savePickResultLocal(payload) {
+  if (!payload?.比賽日期 || !payload?.比賽ID) return;
+  const store = readRecordStore();
+  if (!store[payload.比賽日期]) store[payload.比賽日期] = {};
+  store[payload.比賽日期][payload.比賽ID] = payload;
+  writeRecordStore(store);
+}
+function buildPeriodSummaryFromRows(rows, resultKey, mode) {
+  const now = new Date();
+  const tpNow = new Date(now.toLocaleString('en-US', { timeZone:'Asia/Taipei' }));
+  const curY = tpNow.getFullYear();
+  const curM = tpNow.getMonth();
+  const day = tpNow.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  const weekStart = new Date(tpNow); weekStart.setHours(0,0,0,0); weekStart.setDate(tpNow.getDate() + mondayOffset);
+  let win=0, lose=0, push=0;
+  rows.forEach(item => {
+    const result = String(item?.[resultKey] || '').toUpperCase();
+    if (!result) return;
+    const dt = item?.比賽日期 ? new Date(`${item.比賽日期}T00:00:00+08:00`) : null;
+    if (!dt || Number.isNaN(dt.getTime())) return;
+    if (mode === 'week' && dt < weekStart) return;
+    if (mode === 'month' && (dt.getFullYear() !== curY || dt.getMonth() !== curM)) return;
+    if (result === 'WIN') win++;
+    else if (result === 'LOSE') lose++;
+    else if (result === 'PUSH') push++;
+  });
+  const graded = win + lose;
+  return graded ? `${(win/graded*100).toFixed(1)}%` : '0%';
+}
+function renderSummaryFromRows(rows) {
+  Object.entries(MODEL_LABELS).forEach(([resultKey, elId]) => {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    const week = buildPeriodSummaryFromRows(rows, resultKey, 'week');
+    const month = buildPeriodSummaryFromRows(rows, resultKey, 'month');
+    const season = buildPeriodSummaryFromRows(rows, resultKey, 'season');
+    el.textContent = `週${week}｜月${month}｜季${season}`;
+  });
+}
+async function updateRecordSummary() {
+  const leagues = [];
+  if (nbaToggle.checked) leagues.push('NBA');
+  if (mlbToggle.checked) leagues.push('MLB');
+  if (!leagues.length) return;
+  statsStatusEl.textContent = '統計更新中...';
+  const rows = [];
+  for (const league of leagues) {
+    const season = getSeasonYearByLeague(league, new Date().toISOString());
+    try {
+      const res = await fetch(`${CLOUD_API_BASE}/stats?league=${encodeURIComponent(league)}&season=${encodeURIComponent(season)}`, { cache:'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data?.ok && Array.isArray(data.rows)) rows.push(...data.rows);
+    } catch (err) {}
+  }
+  if (rows.length) {
+    renderSummaryFromRows(rows);
+    statsStatusEl.textContent = '統計已從雲端更新';
+    return;
+  }
+  const store = readRecordStore();
+  const localRows = Object.values(store).flatMap(day => Object.values(day || {}));
+  renderSummaryFromRows(localRows);
+  statsStatusEl.textContent = localRows.length ? '雲端失敗，已改讀本機備援' : '目前尚無統計資料';
+}
+async function syncResultToCloud(payload) {
+  try {
+    await fetch(`${CLOUD_API_BASE}/save_result`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+  } catch (err) {
+    console.warn('同步雲端失敗', err);
+  }
+}
+function avgPair(avgObj) {
+  return {
+    pf: Number(avgObj?.pf ?? 0),
+    pa: Number(avgObj?.pa ?? 0)
+  };
+}
+function modelSpreadPick(leftAvg, rightAvg, market, leftName, rightName) {
+  const leftNet = Number(leftAvg?.pf ?? 0) - Number(leftAvg?.pa ?? 0);
+  const rightNet = Number(rightAvg?.pf ?? 0) - Number(rightAvg?.pa ?? 0);
+  if (leftNet === rightNet) return 'PASS';
+  if (market?.favoriteSide === 'left') return leftNet > rightNet ? `${leftName} 讓分` : `${rightName} 受讓`;
+  if (market?.favoriteSide === 'right') return rightNet > leftNet ? `${rightName} 讓分` : `${leftName} 受讓`;
+  return leftNet > rightNet ? `${leftName} 讓分` : `${rightName} 讓分`;
+}
+function modelTotalByNet(leftAvg, rightAvg) {
+  const leftNet = Number(leftAvg?.pf ?? 0) - Number(leftAvg?.pa ?? 0);
+  const rightNet = Number(rightAvg?.pf ?? 0) - Number(rightAvg?.pa ?? 0);
+  const highScoreTeam = Number(leftAvg?.pf ?? 0) >= Number(rightAvg?.pf ?? 0) ? 'left' : 'right';
+  const highNetTeam = leftNet >= rightNet ? 'left' : 'right';
+  return highScoreTeam === highNetTeam ? '大分' : '小分';
+}
+function modelTotalBySum(leftAvg, rightAvg) {
+  const leftSum = Number(leftAvg?.pf ?? 0) + Number(leftAvg?.pa ?? 0);
+  const rightSum = Number(rightAvg?.pf ?? 0) + Number(rightAvg?.pa ?? 0);
+  const highScoreTeam = Number(leftAvg?.pf ?? 0) >= Number(rightAvg?.pf ?? 0) ? 'left' : 'right';
+  const highSum = highScoreTeam === 'left' ? leftSum : rightSum;
+  const lowSum = highScoreTeam === 'left' ? rightSum : leftSum;
+  return highSum > lowSum ? '小分' : '大分';
+}
+function judgePickResult(event, market, pick, leftName, rightName) {
+  const comp = event?.competitions?.[0];
+  const competitors = (comp?.competitors || []).slice().sort((a,b)=>{
+    if (a.homeAway === 'away') return -1;
+    if (b.homeAway === 'away') return 1;
+    return 0;
+  });
+  if (competitors.length < 2 || !event?.status?.type?.completed || !pick || pick === 'PASS') return '';
+  const leftScore = Number(competitors[0]?.score);
+  const rightScore = Number(competitors[1]?.score);
+  if (!Number.isFinite(leftScore) || !Number.isFinite(rightScore)) return '';
+  const diff = leftScore - rightScore;
+  const total = leftScore + rightScore;
+  if (pick === '大分') {
+    if (market?.total == null) return '';
+    return total > market.total ? 'WIN' : (total < market.total ? 'LOSE' : 'PUSH');
+  }
+  if (pick === '小分') {
+    if (market?.total == null) return '';
+    return total < market.total ? 'WIN' : (total > market.total ? 'LOSE' : 'PUSH');
+  }
+  if ((pick === `${leftName} 讓分` || pick === `${leftName} 受讓`) && market?.leftSpread != null) {
+    const adj = diff + market.leftSpread;
+    return adj > 0 ? 'WIN' : (adj < 0 ? 'LOSE' : 'PUSH');
+  }
+  if ((pick === `${rightName} 讓分` || pick === `${rightName} 受讓`) && market?.rightSpread != null) {
+    const adj = (-diff) + market.rightSpread;
+    return adj > 0 ? 'WIN' : (adj < 0 ? 'LOSE' : 'PUSH');
+  }
+  return '';
+}
+
+function getSeasonTypeValue(event) {
+  const candidates = [
+    event?.season?.type,
+    event?.competitions?.[0]?.type?.id,
+    event?.competitions?.[0]?.type?.type,
+    event?.competitions?.[0]?.type?.abbreviation
+  ].filter(v => v !== undefined && v !== null);
+  for (const v of candidates) {
+    if (typeof v === 'number') return String(v);
+    if (typeof v === 'string') return v.toLowerCase();
+  }
+  return '';
+}function isOfficialGame(conf, event) {
+  const t = getSeasonTypeValue(event);
+  if (!t) return true;
+  if (t === '2' || t === '3' || t === '4') return true;
+  if (t.includes('regular') || t.includes('post') || t.includes('playoff') || t.includes('play-in') || t.includes('playin') || t.includes('final')) return true;
+  if (t.includes('pre') || t.includes('spring') || t.includes('exhibition')) return false;
+  return true;
+}
+function teamNameZh(confKey, team) {
+  const en = team?.displayName || team?.shortDisplayName || team?.name || '-';
+  return TEAM_NAME_ZH[confKey]?.[en] || en;
+}
+function fmtDate(date) { const y=date.getFullYear(), m=String(date.getMonth()+1).padStart(2,'0'), d=String(date.getDate()).padStart(2,'0'); return `${y}${m}${d}`; }
+function avg(nums) { return nums.length ? nums.reduce((a,b)=>a+b,0)/nums.length : 0; }
+function round1(n) { return (Math.round(n*10)/10).toFixed(1); }
+function getWindowAverages(games, count, side=null) {
+  let filtered = games;
+  if (side) {
+    filtered = games.filter(g => g.homeAway === side);
+  }
+  const slice = filtered.slice(0, count);
+  if (!slice.length) return null;
+  return { pf: avg(slice.map(g=>g.pf)), pa: avg(slice.map(g=>g.pa)) };
+}
+function compactStat(games, count) {
+  const a = getWindowAverages(games, count);
+  if (!a) return '-';
+  return `${round1(a.pf)}/${round1(a.pa)}`;
+}
+function netText(games, count, allowShow) {
+  if (!allowShow) return '-';
+  const a = getWindowAverages(games, count);
+  if (!a) return '-';
+  return (a.pf - a.pa >= 0 ? '+' : '') + round1(a.pf - a.pa);
+}
+function sumValue(games, count, allowShow) {
+  if (!allowShow) return null;
+  const a = getWindowAverages(games, count);
+  if (!a) return null;
+  return round1(a.pf + a.pa);
+}
+function toNum(v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  const cleaned = String(v).replace(/[^0-9.+-]/g, '');
+  if (!cleaned || cleaned === '+' || cleaned === '-') return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
+function getTeamAliases(team) {
+  const raw = [
+    team?.displayName, team?.shortDisplayName, team?.name, team?.abbreviation,
+    team?.location, team?.nickname
+  ].filter(Boolean);
+  const out = new Set();
+  raw.forEach(v => {
+    const s = String(v).trim();
+    if (!s) return;
+    out.add(s.toLowerCase());
+    s.split(/\s+/).forEach(part => part && out.add(part.toLowerCase()));
+  });
+  return [...out];
+}
+function textHasTeamAlias(text, team) {
+  const src = String(text || '').toLowerCase();
+  if (!src) return false;
+  return getTeamAliases(team).some(alias => alias && src.includes(alias));
+}
+function getTeamSideSpread(odds, competitor) {
+  const side = competitor?.homeAway;
+  const sideOdds = side === 'away' ? odds?.awayTeamOdds : (side === 'home' ? odds?.homeTeamOdds : null);
+  const candidates = [
+    sideOdds?.spread, sideOdds?.pointSpread, sideOdds?.line,
+    competitor?.odds?.spread, competitor?.odds?.pointSpread,
+    competitor?.linescores?.[0]?.spread
+  ];
+  for (const v of candidates) {
+    const n = toNum(v);
+    if (n !== null) return n;
+  }
+  return null;
+}
+function extractMarket(event, leftCompetitor, rightCompetitor) {
+  const comp = event?.competitions?.[0] || {};
+  const oddsList = []
+    .concat(Array.isArray(comp?.odds) ? comp.odds : [])
+    .concat(Array.isArray(event?.odds) ? event.odds : []);
+
+  const market = {
+    provider: '',
+    total: null,
+    spread: null,
+    favoriteSide: null,
+    leftSpread: null,
+    rightSpread: null,
+    details: ''
+  };
+
+  for (const odds of oddsList) {
+    const provider = odds?.provider?.name || odds?.provider?.id || odds?.provider || '';
+    const details = odds?.details || odds?.displayValue || '';
+    const total = [
+      odds?.overUnder, odds?.overunder, odds?.total, odds?.totalPoints,
+      odds?.overUnderLine, odds?.underOver
+    ].map(toNum).find(v => v !== null);
+
+    let leftSpread = getTeamSideSpread(odds, leftCompetitor);
+    let rightSpread = getTeamSideSpread(odds, rightCompetitor);
+
+    if (leftSpread === null && rightSpread === null) {
+      const rawSpread = [
+        odds?.spread, odds?.pointSpread, odds?.line
+      ].map(toNum).find(v => v !== null);
+      if (rawSpread !== null) {
+        if (textHasTeamAlias(details, leftCompetitor?.team)) {
+          leftSpread = rawSpread < 0 ? rawSpread : -Math.abs(rawSpread);
+          rightSpread = -leftSpread;
+        } else if (textHasTeamAlias(details, rightCompetitor?.team)) {
+          rightSpread = rawSpread < 0 ? rawSpread : -Math.abs(rawSpread);
+          leftSpread = -rightSpread;
+        }
+      }
+    }
+
+    if (market.total === null && total !== null) market.total = total;
+    if (market.leftSpread === null && leftSpread !== null) market.leftSpread = leftSpread;
+    if (market.rightSpread === null && rightSpread !== null) market.rightSpread = rightSpread;
+    if (!market.provider && provider) market.provider = provider;
+    if (!market.details && details) market.details = details;
+  }
+
+  if (market.leftSpread !== null && market.rightSpread === null) market.rightSpread = -market.leftSpread;
+  if (market.rightSpread !== null && market.leftSpread === null) market.leftSpread = -market.rightSpread;
+
+  if (market.leftSpread !== null && market.rightSpread !== null) {
+    if (market.leftSpread < market.rightSpread) {
+      market.favoriteSide = 'left';
+      market.spread = Math.abs(market.leftSpread);
+    } else if (market.rightSpread < market.leftSpread) {
+      market.favoriteSide = 'right';
+      market.spread = Math.abs(market.rightSpread);
+    } else if (market.leftSpread < 0) {
+      market.favoriteSide = 'left';
+      market.spread = Math.abs(market.leftSpread);
+    }
+  }
+
+  return market;
+}
+function formatMarketSpread(market, leftName, rightName) {
+  if (!market || market.spread === null || !market.favoriteSide) return '無';
+  const favName = market.favoriteSide === 'left' ? leftName : rightName;
+  return `${favName} -${round1(market.spread)}`;
+}
+function getWeightedValue(values) {
+  const weights = [0.5, 0.3, 0.2];
+  let total = 0, sum = 0;
+  values.forEach((v, i) => {
+    if (v === null || v === undefined || Number.isNaN(Number(v))) return;
+    total += Number(v) * weights[i];
+    sum += weights[i];
+  });
+  return sum ? total / sum : null;
+}
+function getRecentState(row) {
+  const net10 = toNum(row?.net10);
+  const net5 = toNum(row?.net5);
+  const net3 = toNum(row?.net3);
+  return {
+    net10, net5, net3,
+    positive10: net10 !== null && net10 > 0,
+    positive5: net5 !== null && net5 > 0,
+    positive3: net3 !== null && net3 > 0,
+    overheatingUp: net3 !== null && net10 !== null && (net3 - net10) >= 6,
+    overheatingDown: net3 !== null && net10 !== null && (net10 - net3) >= 6
+  };
+}
+function buildBetSuggestion(conf, left, right, market) {
+  const leftState = getRecentState(left);
+  const rightState = getRecentState(right);
+
+  let leftSumW = getWeightedValue([toNum(left?.sum10), toNum(left?.sum5), toNum(left?.sum3)]);
+  let rightSumW = getWeightedValue([toNum(right?.sum10), toNum(right?.sum5), toNum(right?.sum3)]);
+  let leftNetW = getWeightedValue([toNum(left?.net10), toNum(left?.net5), toNum(left?.net3)]);
+  let rightNetW = getWeightedValue([toNum(right?.net10), toNum(right?.net5), toNum(right?.net3)]);
+
+  let extraReason = '';
+
+  if (conf.key === 'nba') {
+    const restAdjust = (days) => {
+      if (days === null || days === undefined) return 0;
+      if (days <= 1) return -1.5;
+      if (days >= 3) return 1.0;
+      return 0;
+    };
+    if (leftNetW !== null) leftNetW += restAdjust(left?.restDays);
+    if (rightNetW !== null) rightNetW += restAdjust(right?.restDays);
+    extraReason = `${left?.name || '左隊'} ${left?.restLabel || '未知'} / ${right?.name || '右隊'} ${right?.restLabel || '未知'}`;
+  }
+
+  if (conf.key === 'mlb') {
+    const leftPA = getWeightedValue([toNum(left?.pa10), toNum(left?.pa5), toNum(left?.pa3)]);
+    const rightPA = getWeightedValue([toNum(right?.pa10), toNum(right?.pa5), toNum(right?.pa3)]);
+    if (leftPA !== null && rightPA !== null) {
+      const pitchingBias = ((leftPA + rightPA) / 2 - 4.2) * 0.6;
+      if (leftSumW !== null) leftSumW += pitchingBias;
+      if (rightSumW !== null) rightSumW += pitchingBias;
+      extraReason = 'MLB 已納入失分代理投手影響';
+    }
+  }
+
+  const predictedTotal = (leftSumW !== null && rightSumW !== null) ? (leftSumW + rightSumW) / 2 : null;
+  const predictedMargin = (leftNetW !== null && rightNetW !== null) ? (leftNetW - rightNetW) : null;
+  const totalGap = (predictedTotal !== null && market?.total !== null) ? (predictedTotal - market.total) : null;
+  const tempoGap = (leftSumW !== null && rightSumW !== null) ? Math.abs(leftSumW - rightSumW) : null;
+
+  let profile = '混合盤';
+  if (leftState.positive10 && rightState.positive10) profile = '雙正分';
+  else if (!leftState.positive10 && !rightState.positive10) profile = '雙負分';
+  else profile = '一強一弱';
+
+  let spreadGap = null;
+  let spreadSuggestion = 'PASS';
+  if (predictedMargin !== null && market?.spread !== null && market?.favoriteSide) {
+    if (market.favoriteSide === 'left') {
+      spreadGap = predictedMargin - market.spread;
+      if (spreadGap >= conf.spreadEdge) spreadSuggestion = `${left.name} 讓分`;
+      else if (spreadGap <= -conf.spreadEdge) spreadSuggestion = `${right.name} 受讓`;
+    } else {
+      const predictedRightMargin = -predictedMargin;
+      spreadGap = predictedRightMargin - market.spread;
+      if (spreadGap >= conf.spreadEdge) spreadSuggestion = `${right.name} 讓分`;
+      else if (spreadGap <= -conf.spreadEdge) spreadSuggestion = `${left.name} 受讓`;
+    }
+  }
+
+  let totalSuggestion = 'PASS';
+  if (totalGap !== null) {
+    if (totalGap >= conf.totalEdge) totalSuggestion = '大分';
+    else if (totalGap <= -conf.totalEdge) totalSuggestion = '小分';
+  }
+
+  const overheatUp = leftState.overheatingUp || rightState.overheatingUp;
+  const overheatDown = leftState.overheatingDown || rightState.overheatingDown;
+  const highTotal = market?.total !== null && market.total >= conf.highTotal;
+
+  let finalSuggestion = 'PASS';
+  let reason = '未達下注門檻';
+
+  if (profile === '雙正分') {
+    if (totalSuggestion === '大分' && !overheatUp && (tempoGap === null || tempoGap <= (conf.key === 'nba' ? 12 : 2.2)) && !highTotal) {
+      finalSuggestion = '大分';
+      reason = '雙正分，主打大小分；edge 達標且未過熱';
+    } else if (spreadSuggestion !== 'PASS' && Math.abs(spreadGap || 0) >= conf.spreadEdge + 1) {
+      finalSuggestion = spreadSuggestion;
+      reason = '雙正分但讓分 edge 更大';
+    } else if (totalSuggestion === '小分') {
+      finalSuggestion = '小分';
+      reason = '雙正分但盤口開過高，偏反打';
+    }
+  } else if (profile === '雙負分') {
+    if (totalSuggestion === '小分' && !overheatDown) {
+      finalSuggestion = '小分';
+      reason = '雙負分，主打小分';
+    } else if (spreadSuggestion !== 'PASS' && Math.abs(spreadGap || 0) >= conf.spreadEdge + 1) {
+      finalSuggestion = spreadSuggestion;
+      reason = '雙負分但讓分 edge 較大';
+    }
+  } else {
+    if (spreadSuggestion !== 'PASS' && !overheatUp && !overheatDown) {
+      finalSuggestion = spreadSuggestion;
+      reason = '一強一弱，主打讓分';
+    } else if (totalSuggestion !== 'PASS' && (tempoGap === null || tempoGap <= (conf.key === 'nba' ? 10 : 1.8))) {
+      finalSuggestion = totalSuggestion;
+      reason = '一強一弱但大小分 edge 較明顯';
+    }
+  }
+
+  let confidence = 'PASS';
+  const edgeBase = Math.max(Math.abs(totalGap || 0) / conf.totalEdge, Math.abs(spreadGap || 0) / conf.spreadEdge);
+  if (finalSuggestion !== 'PASS') {
+    if (edgeBase >= 1.8) confidence = '強';
+    else if (edgeBase >= 1.2) confidence = '中';
+    else confidence = '弱';
+  }
+
+  let displayEdge = null;
+  let edgeText = 'edge：無';
+  if (finalSuggestion === '大分' || finalSuggestion === '小分') {
+    displayEdge = totalGap;
+    edgeText = totalGap !== null ? `大小 edge：${totalGap >= 0 ? '+' : ''}${round1(totalGap)}` : '大小 edge：無';
+  } else if (finalSuggestion.includes('讓分') || finalSuggestion.includes('受讓')) {
+    displayEdge = spreadGap;
+    edgeText = spreadGap !== null ? `讓分 edge：${spreadGap >= 0 ? '+' : ''}${round1(spreadGap)}` : '讓分 edge：無';
+  }
+
+  if (extraReason && finalSuggestion !== 'PASS') {
+    reason += `｜${extraReason}`;
+  }
+
+  return {
+    profile,
+    predictedTotal,
+    predictedMargin,
+    totalGap,
+    spreadGap,
+    tempoGap,
+    totalSuggestion,
+    spreadSuggestion,
+    finalSuggestion,
+    confidence,
+    overheatUp,
+    overheatDown,
+    displayEdge,
+    edgeText,
+    reason
+  };
+}
+function marketLineText(value, digits = 1) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return '無';
+  return Number(value).toFixed(digits);
+}
+function setBusy(isBusy) {
+  todayBtn.disabled = isBusy;
+  tomorrowBtn.disabled = isBusy;
+}
+function dateMinusDays(base, days){ const d = new Date(base.getFullYear(), base.getMonth(), base.getDate()); d.setDate(d.getDate()-days); return d; }
+
+function daysBetweenGameDates(laterIso, earlierIso) {
+  const later = new Date(laterIso);
+  const earlier = new Date(earlierIso);
+  const ms = later.getTime() - earlier.getTime();
+  if (!Number.isFinite(ms)) return null;
+  return Math.floor(ms / 86400000);
+}
+function getRestLabel(days) {
+  if (days === null || days === undefined) return '未知';
+  if (days <= 1) return 'B2B';
+  if (days === 2) return '休1天';
+  if (days === 3) return '休2天';
+  return `休${days - 1}天`;
+}
+
+async function fetchJson(url) {
+  const candidates = [
+    url,
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    `https://corsproxy.io/?${encodeURIComponent(url)}`
+  ];
+  let lastErr;
+  for (const candidate of candidates) {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(()=>controller.abort(), 15000);
+      const res = await fetch(candidate, { signal:controller.signal, cache:'no-store' });
+      clearTimeout(timer);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      lastErr = err;
+      console.warn('fetch 失敗：', candidate, err);
+    }
+  }
+  throw lastErr || new Error('抓取失敗');
+}
+
+async function getScoreboard(conf, yyyymmdd) {
+  const key = `${conf.key}:${yyyymmdd}`;
+  if (scoreboardCache.has(key)) return scoreboardCache.get(key);
+  const url = `https://site.api.espn.com/apis/site/v2/sports/${conf.sport}/${conf.league}/scoreboard?dates=${yyyymmdd}`;
+  const data = await fetchJson(url);
+  const events = Array.isArray(data?.events) ? data.events : [];
+  scoreboardCache.set(key, events);
+  return events;
+}
+
+function getCompletedGameForTeam(conf, event, teamId, cutoffMs) {
+  if (!isOfficialGame(conf, event)) return null;
+  if (!event?.status?.type?.completed) return null;
+  const gameMs = new Date(event.date).getTime();
+  if (!(gameMs < cutoffMs)) return null;
+  const comp = event.competitions?.[0];
+  const competitors = comp?.competitors || [];
+  const mine = competitors.find(c => String(c.team?.id) === String(teamId));
+  const opp = competitors.find(c => String(c.team?.id) !== String(teamId));
+  if (!mine || !opp) return null;
+  const pf = Number(mine.score), pa = Number(opp.score);
+  if (Number.isNaN(pf) || Number.isNaN(pa)) return null;
+  return { pf, pa, date:event.date, gameMs, id:event.id, homeAway: mine.homeAway };
+}
+
+async function getTeamRecentGamesByScoreboards(conf, teamId, cutoffInput) {
+  const out = [];
+  const seen = new Set();
+  const cutoffMs = new Date(cutoffInput).getTime();
+  const cutoffDate = new Date(cutoffMs);
+  for (let i=0; i<=conf.lookbackDays; i++) {
+    const d = dateMinusDays(cutoffDate, i);
+    const yyyymmdd = fmtDate(d);
+    let events = [];
+    try {
+      events = await getScoreboard(conf, yyyymmdd);
+    } catch (err) {
+      console.warn('scoreboard 日資料失敗', conf.key, yyyymmdd, err);
+      continue;
+    }
+    for (const ev of events) {
+      const game = getCompletedGameForTeam(conf, ev, teamId, cutoffMs);
+      if (game && !seen.has(game.id)) {
+        seen.add(game.id);
+        out.push(game);
+      }
+    }
+    if (out.length >= 12) break;
+  }
+  out.sort((a,b)=>b.gameMs-a.gameMs);
+  return out.slice(0,10);
+}
+
+function buildMatchCard(leagueName, leagueKey, event, teamStatsMap) {
+  const comp = event.competitions?.[0];
+  let competitors = (comp?.competitors || []).slice();
+
+  competitors = competitors.sort((a,b)=>{
+    if(a.homeAway === 'away') return -1;
+    if(b.homeAway === 'away') return 1;
+    return 0;
+  });
+
+  const avg10Map = new Map();
+  competitors.forEach(c => {
+    const teamId = String(c?.team?.id || '');
+    const stats = teamStatsMap.get(teamId) || [];
+    avg10Map.set(teamId, getWindowAverages(stats, 10, c.homeAway));
+  });
+
+  const allowNet10 = competitors.every(c => {
+    const a = avg10Map.get(String(c?.team?.id || ''));
+    return a && a.pf > a.pa;
+  });
+
+  function getAlertTeamId(avgMap, allowShow) {
+    if (!allowShow || competitors.length !== 2) return null;
+    const c1 = competitors[0], c2 = competitors[1];
+    const id1 = String(c1?.team?.id || ''), id2 = String(c2?.team?.id || '');
+    const a1 = avgMap.get(id1), a2 = avgMap.get(id2);
+    if (!a1 || !a2 || a1.pf === a2.pf) return null;
+    const lowerId = a1.pf < a2.pf ? id1 : id2;
+    const higherId = a1.pf < a2.pf ? id2 : id1;
+    const lower = avgMap.get(lowerId), higher = avgMap.get(higherId);
+    return (lower.pf + lower.pa) > (higher.pf + higher.pa) ? lowerId : null;
+  }
+
+  const alert10TeamId = getAlertTeamId(avg10Map, allowNet10);
+
+  const rows = competitors.map(c => {
+    const teamId = String(c?.team?.id || '');
+    const stats = teamStatsMap.get(teamId) || [];
+    const side = c?.homeAway || null;
+    const sideStats = side ? stats.filter(g => g.homeAway === side) : stats;
+    return {
+      teamId,
+      name: teamNameZh(leagueKey, c?.team),
+      side: c?.homeAway === 'home' ? '主隊' : (c?.homeAway === 'away' ? '客隊' : ''),
+      stat10: compactStat(sideStats,10),
+      net10: netText(sideStats,10,true),
+      sum10: sumValue(sideStats,10,true),
+      stat5: compactStat(sideStats,5),
+      net5: netText(sideStats,5,true),
+      sum5: sumValue(sideStats,5,true),
+      stat3: compactStat(sideStats,3),
+      net3: netText(sideStats,3,true),
+      sum3: sumValue(sideStats,3,true),
+      all10Avg: getWindowAverages(stats, 10),
+      side10Avg: getWindowAverages(sideStats, 10)
+    };
+  });
+
+  const left = rows[0] || {};
+  const right = rows[1] || {};
+  const market = extractMarket(event, competitors[0], competitors[1]);
+  const suggestion = buildBetSuggestion(CONFIG[leagueKey], left, right, market);
+
+  function netNumber(v) {
+    if (!v || v === '-') return null;
+    const n = Number(String(v).replace('+',''));
+    return Number.isFinite(n) ? n : null;
+  }
+  function compareNetClass(leftValue, rightValue, side) {
+    const leftNum = netNumber(leftValue);
+    const rightNum = netNumber(rightValue);
+    if (leftNum === null || rightNum === null) return '';
+    if (leftNum === rightNum) return '';
+    const isBigger = side === 'left' ? leftNum > rightNum : rightNum > leftNum;
+    return isBigger ? 'net-positive' : '';
+  }
+  function sumHtml(row, count, alertTeamId) {
+    const v = count === 10 ? row.sum10 : (count === 5 ? row.sum5 : (count === 3 ? row.sum3 : null));
+    if (v == null) return '<span class="stat-main">-</span>';
+    const cls = row.teamId === alertTeamId ? 'sum-alert' : '';
+    return `<span class="stat-main ${cls}">${round1(v)}</span>`;
+  }
+  function valueHtml(v, extra='') {
+    return `<span class="stat-main ${extra}">${v || '-'}</span>`;
+  }
+  function timeOnly(iso) {
+    return new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(iso));
+  }
+  function shortTime(iso) {
+    return new Intl.DateTimeFormat('zh-TW',{timeZone:'Asia/Taipei',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(iso));
+  }
+  function lineText(label, value) {
+    return `${label}${value}`;
+  }
+
+  const card = document.createElement('div');
+  card.className = 'card match';
+
+  let minEdge = Infinity;
+  if (leagueKey === 'nba') {
+    if (suggestion.finalSuggestion === '大分' || suggestion.finalSuggestion === '小分') {
+      minEdge = 10;
+    } else if (suggestion.finalSuggestion.includes('讓分') || suggestion.finalSuggestion.includes('受讓')) {
+      minEdge = 6;
+    }
+  } else if (leagueKey === 'mlb') {
+    if (suggestion.finalSuggestion === '大分' || suggestion.finalSuggestion === '小分' ||
+        suggestion.finalSuggestion.includes('讓分') || suggestion.finalSuggestion.includes('受讓')) {
+      minEdge = 3;
+    }
+  }
+
+  const edgeRank = Math.abs(Number(suggestion.displayEdge || 0));
+  const showStrong = suggestion.finalSuggestion !== 'PASS' && edgeRank >= minEdge;
+  const dateKey = toTaipeiDateKey(event.date);
+  const gameId = String(event.id || `${leagueKey}_${dateKey}_${left.name}_${right.name}`);
+  const avgAllLeft = avgPair(left.all10Avg);
+  const avgAllRight = avgPair(right.all10Avg);
+  const avgSideLeft = avgPair(left.side10Avg);
+  const avgSideRight = avgPair(right.side10Avg);
+  const allCountEnough = (Number(left.allCount || 0) >= 10) && (Number(right.allCount || 0) >= 10);
+  const sideCountEnough = (Number(left.sideCount || 0) >= 10) && (Number(right.sideCount || 0) >= 10);
+  const allEligible = allCountEnough && (toNum(left.net10) ?? -999) > 0 && (toNum(right.net10) ?? -999) > 0;
+  const sideEligible = sideCountEnough && (toNum(left.net10_side) ?? -999) > 0 && (toNum(right.net10_side) ?? -999) > 0;
+  const modelPicks = {
+    '近10讓分推薦': allEligible ? modelSpreadPick(avgAllLeft, avgAllRight, market, left.name, right.name) : 'PASS',
+    '近10大小_淨值推薦': allEligible ? modelTotalByNet(avgAllLeft, avgAllRight) : 'PASS',
+    '近10大小_相加推薦': allEligible ? modelTotalBySum(avgAllLeft, avgAllRight) : 'PASS',
+    '主客讓分推薦': sideEligible ? modelSpreadPick(avgSideLeft, avgSideRight, market, left.name, right.name) : 'PASS',
+    '主客大小_淨值推薦': sideEligible ? modelTotalByNet(avgSideLeft, avgSideRight) : 'PASS',
+    '主客大小_相加推薦': sideEligible ? modelTotalBySum(avgSideLeft, avgSideRight) : 'PASS',
+    'EDGE讓分推薦': (showStrong && (suggestion.finalSuggestion.includes('讓分') || suggestion.finalSuggestion.includes('受讓'))) ? suggestion.finalSuggestion : 'PASS',
+    'EDGE大小推薦': (showStrong && (suggestion.finalSuggestion === '大分' || suggestion.finalSuggestion === '小分')) ? suggestion.finalSuggestion : 'PASS'
+  };
+  const modelResults = {
+    '近10讓分結果': allEligible ? judgePickResult(event, market, modelPicks['近10讓分推薦'], left.name, right.name) : '',
+    '近10大小_淨值結果': allEligible ? judgePickResult(event, market, modelPicks['近10大小_淨值推薦'], left.name, right.name) : '',
+    '近10大小_相加結果': allEligible ? judgePickResult(event, market, modelPicks['近10大小_相加推薦'], left.name, right.name) : '',
+    '主客讓分結果': sideEligible ? judgePickResult(event, market, modelPicks['主客讓分推薦'], left.name, right.name) : '',
+    '主客大小_淨值結果': sideEligible ? judgePickResult(event, market, modelPicks['主客大小_淨值推薦'], left.name, right.name) : '',
+    '主客大小_相加結果': sideEligible ? judgePickResult(event, market, modelPicks['主客大小_相加推薦'], left.name, right.name) : '',
+    'EDGE讓分結果': judgePickResult(event, market, modelPicks['EDGE讓分推薦'], left.name, right.name),
+    'EDGE大小結果': judgePickResult(event, market, modelPicks['EDGE大小推薦'], left.name, right.name)
+  };
+  const seasonYear = getSeasonYearByLeague(leagueName, event.date);
+  const payload = {
+    '比賽ID': gameId,
+    '聯盟': leagueName,
+    '賽季': String(seasonYear),
+    '比賽日期': dateKey,
+    '對戰': `${left.name} vs ${right.name}`,
+    '主隊': right.name,
+    '客隊': left.name,
+    '最終比分': toFinalScoreText(event),
+    '判定時間': new Date().toISOString(),
+    '更新時間': new Date().toISOString(),
+    '讓分盤': market.spread != null ? round1(market.spread) : '',
+    '大小分盤': market.total != null ? round1(market.total) : '',
+    'EDGE讓分值': modelPicks['EDGE讓分推薦'] !== 'PASS' ? round1(Math.abs(Number(suggestion.displayEdge || 0))) : '',
+    'EDGE大小值': modelPicks['EDGE大小推薦'] !== 'PASS' ? round1(Math.abs(Number(suggestion.displayEdge || 0))) : '',
+    ...modelPicks,
+    ...modelResults
+  };
+  const hasAnyResult = Object.values(modelResults).some(v => !!v);
+  if (hasAnyResult) {
+    savePickResultLocal(payload);
+    syncResultToCloud(payload);
+  }
+  card.dataset.show = showStrong ? '1' : '0';
+  card.dataset.rank = String(edgeRank);
+  card.innerHTML = `
+    <div class="topline">
+      <div>
+        <div class="sub">保留EDGE＋近10＋主客近10，不隱藏</div>
+      </div>
+      <div class="tag">${leagueName}</div>
+    </div>
+    <div class="versus-card">
+      <div class="versus-head">
+        <div class="versus-team-title">${left.name || '-'}</div>
+        <div class="versus-time">${timeOnly(event.date)}</div>
+        <div class="versus-team-title">${right.name || '-'}</div>
+      </div>
+      <table class="versus-table">
+        <tr>
+          <td class="team-side"><span class="small-top">${leagueName}</span>${left.side ? `<span class="team-role">${left.side}</span>` : ''}</td>
+          <td class="stat-name">項目</td>
+          <td class="team-side"><span class="small-top">${leagueName}</span>${right.side ? `<span class="team-role">${right.side}</span>` : ''}</td>
+        </tr>
+        <tr>
+          <td><span class="stat-main">${market.leftSpread !== null ? round1(market.leftSpread) : '無'}</span></td>
+          <td class="stat-name">讓分盤</td>
+          <td><span class="stat-main">${market.rightSpread !== null ? (market.rightSpread > 0 ? '+' : '') + round1(market.rightSpread) : '無'}</span></td>
+        </tr>
+        <tr>
+          <td><span class="stat-main">${market.total !== null ? round1(market.total) : '無'}</span></td>
+          <td class="stat-name">大小分盤</td>
+          <td><span class="stat-main">${market.provider || 'ESPN'}</span></td>
+        </tr>
+        <tr>
+          <td>${valueHtml(left.stat10 || '-')}</td>
+          <td class="stat-name">主客近10得 / 失</td>
+          <td>${valueHtml(right.stat10 || '-')}</td>
+        </tr>
+        <tr>
+          <td>${valueHtml(left.net10 || '-', compareNetClass(left.net10 || '-', right.net10 || '-', 'left'))}</td>
+          <td class="stat-name">主客近10淨值</td>
+          <td>${valueHtml(right.net10 || '-', compareNetClass(left.net10 || '-', right.net10 || '-', 'right'))}</td>
+        </tr>
+        <tr>
+          <td>${sumHtml(left,10,null)}</td>
+          <td class="stat-name">主客近10總和</td>
+          <td>${sumHtml(right,10,null)}</td>
+        </tr>
+        <tr>
+          <td><span class="stat-main">${avgAllLeft ? `${round1(avgAllLeft.pf)}/${round1(avgAllLeft.pa)}` : '-'}</span></td>
+          <td class="stat-name">近10得 / 失</td>
+          <td><span class="stat-main">${avgAllRight ? `${round1(avgAllRight.pf)}/${round1(avgAllRight.pa)}` : '-'}</span></td>
+        </tr>
+        <tr>
+          <td><span class="stat-main ${compareNetClass(avgAllLeft ? ((avgAllLeft.pf-avgAllLeft.pa)>=0? '+'+round1(avgAllLeft.pf-avgAllLeft.pa): round1(avgAllLeft.pf-avgAllLeft.pa)) : '-', avgAllRight ? ((avgAllRight.pf-avgAllRight.pa)>=0? '+'+round1(avgAllRight.pf-avgAllRight.pa): round1(avgAllRight.pf-avgAllRight.pa)) : '-', 'left') }">${avgAllLeft ? ((avgAllLeft.pf-avgAllLeft.pa)>=0? '+'+round1(avgAllLeft.pf-avgAllLeft.pa): round1(avgAllLeft.pf-avgAllLeft.pa)) : '-'}</span></td>
+          <td class="stat-name">近10淨值</td>
+          <td><span class="stat-main ${compareNetClass(avgAllLeft ? ((avgAllLeft.pf-avgAllLeft.pa)>=0? '+'+round1(avgAllLeft.pf-avgAllLeft.pa): round1(avgAllLeft.pf-avgAllLeft.pa)) : '-', avgAllRight ? ((avgAllRight.pf-avgAllRight.pa)>=0? '+'+round1(avgAllRight.pf-avgAllRight.pa): round1(avgAllRight.pf-avgAllRight.pa)) : '-', 'right') }">${avgAllRight ? ((avgAllRight.pf-avgAllRight.pa)>=0? '+'+round1(avgAllRight.pf-avgAllRight.pa): round1(avgAllRight.pf-avgAllRight.pa)) : '-'}</span></td>
+        </tr>
+        <tr>
+          <td><span class="stat-main">${avgAllLeft ? round1(avgAllLeft.pf + avgAllLeft.pa) : '-'}</span></td>
+          <td class="stat-name">近10總和</td>
+          <td><span class="stat-main">${avgAllRight ? round1(avgAllRight.pf + avgAllRight.pa) : '-'}</span></td>
+        </tr>
+        <tr>
+          <td><span class="stat-main">${modelPicks['近10讓分推薦'] || 'PASS'}</span></td>
+          <td class="stat-name">近10讓分推薦</td>
+          <td><span class="stat-main">${modelPicks['主客讓分推薦'] || 'PASS'}</span></td>
+        </tr>
+        <tr>
+          <td><span class="stat-main">${modelPicks['近10大小_淨值推薦'] || 'PASS'}</span></td>
+          <td class="stat-name">近10大小淨值</td>
+          <td><span class="stat-main">${modelPicks['主客大小_淨值推薦'] || 'PASS'}</span></td>
+        </tr>
+        <tr>
+          <td><span class="stat-main">${modelPicks['近10大小_相加推薦'] || 'PASS'}</span></td>
+          <td class="stat-name">近10大小相加</td>
+          <td><span class="stat-main">${modelPicks['主客大小_相加推薦'] || 'PASS'}</span></td>
+        </tr>
+        ${showStrong ? `
+        <tr>
+          <td colspan="3"><span class="stat-main">EDGE推薦：${suggestion.finalSuggestion}</span></td>
+        </tr>
+        <tr>
+          <td colspan="3"><span class="stat-main">${suggestion.edgeText}</span></td>
+        </tr>` : ''}
+        <tr>
+          <td><span class="stat-main">${shortTime(event.date)}</span></td>
+          <td class="stat-name">開賽時間</td>
+          <td><span class="stat-main">${shortTime(event.date)}</span></td>
+        </tr>
+      </table>
+    </div>
+    <div class="footer-note">${showStrong ? suggestion.reason : '未達EDGE顯示門檻'}</div>`;
+  return card;
+}
+
+
+function buildNear10Card(leagueName, leagueKey, event, teamStatsMap) {
+  const comp = event?.competitions?.[0];
+  let competitors = (comp?.competitors || []).slice();
+  competitors = competitors.sort((a,b)=>{
+    if (a.homeAway === 'away') return -1;
+    if (b.homeAway === 'away') return 1;
+    return 0;
+  });
+
+  const rows = competitors.map(c => {
+    const teamId = String(c?.team?.id || '');
+    const stats = teamStatsMap.get(teamId) || [];
+    const side = c?.homeAway || null;
+    const sideStats = stats.filter(g => !side || g.homeAway === side);
+    const avgAll = getWindowAverages(stats, 10);
+    const avgSide = getWindowAverages(sideStats, 10);
+    const netAll = avgAll ? avgAll.pf - avgAll.pa : null;
+    const netSide = avgSide ? avgSide.pf - avgSide.pa : null;
+    const sumAll = avgAll ? avgAll.pf + avgAll.pa : null;
+    const sumSide = avgSide ? avgSide.pf + avgSide.pa : null;
+    const countAllEnough = stats.length >= 10;
+    const countSideEnough = sideStats.length >= 10;
+    const passAll = !!(countAllEnough && avgAll && netAll > 0);
+    const passSide = !!(countSideEnough && avgSide && netSide > 0);
+    return {
+      name: teamNameZh(leagueKey, c?.team),
+      side: c?.homeAway === 'home' ? '主隊' : (c?.homeAway === 'away' ? '客隊' : ''),
+      allCount: stats.length,
+      sideCount: sideStats.length,
+      avgAll, avgSide, netAll, netSide, sumAll, sumSide,
+      countAllEnough, countSideEnough, passAll, passSide
+    };
+  });
+
+  const left = rows[0] || {};
+  const right = rows[1] || {};
+
+  const allEnough = left.countAllEnough && right.countAllEnough;
+  const sideEnough = left.countSideEnough && right.countSideEnough;
+  const allEligible = left.passAll && right.passAll;
+  const sideEligible = left.passSide && right.passSide;
+  const allInsufficient = !allEnough;
+  const sideInsufficient = !sideEnough;
+
+  // 整張卡規則：只有近10或主客近10任一組「雙方淨值都正」才顯示；否則整張隱藏
+  if (!(allEligible || sideEligible)) return null;
+
+  function fmtAvg(avgObj, enough) {
+    if (!enough) return '場數不足';
+    return avgObj ? `${round1(avgObj.pf)}/${round1(avgObj.pa)}` : '-';
+  }
+  function fmtNet(v, enough) {
+    if (!enough) return '場數不足';
+    return v === null || v === undefined ? '-' : `${v >= 0 ? '+' : ''}${round1(v)}`;
+  }
+  function fmtSum(v, enough) {
+    if (!enough) return '場數不足';
+    return v === null || v === undefined ? '-' : round1(v);
+  }
+  function redWrap(s) {
+    return `<span class="mark-red">${s}</span>`;
+  }
+  function netClass(value, otherValue, enabled) {
+    if (!enabled || value === null || otherValue === null) return '';
+    return value > otherValue ? 'mark-red' : '';
+  }
+  function sumClass(value, otherValue, enabled) {
+    if (!enabled || value === null || otherValue === null) return '';
+    return value > otherValue ? 'mark-red' : '';
+  }
+  function spreadText(a, b, enabled, enough) {
+    if (!enough) return '場數不足';
+    if (!enabled || a === null || b === null) return '—';
+    return a >= b ? redWrap(`${left.name} 讓分較強`) : redWrap(`${right.name} 讓分較強`);
+  }
+  function totalByNet(aAvg, bAvg, aNet, bNet, enabled, enough) {
+    if (!enough) return '場數不足';
+    if (!enabled || !aAvg || !bAvg || aNet === null || bNet === null) return '—';
+    const highScoreTeam = aAvg.pf >= bAvg.pf ? 'left' : 'right';
+    const highNetTeam = aNet >= bNet ? 'left' : 'right';
+    return highScoreTeam === highNetTeam ? redWrap('小分') : redWrap('大分');
+  }
+  function totalBySum(aAvg, bAvg, aSum, bSum, enabled, enough) {
+    if (!enough) return '場數不足';
+    if (!enabled || !aAvg || !bAvg || aSum === null || bSum === null) return '—';
+    const highScoreTeam = aAvg.pf >= bAvg.pf ? 'left' : 'right';
+    const highScoreSum = highScoreTeam === 'left' ? aSum : bSum;
+    const lowScoreSum = highScoreTeam === 'left' ? bSum : aSum;
+    return highScoreSum > lowScoreSum ? redWrap('小分') : redWrap('大分');
+  }
+  function shortTime(iso) {
+    return new Intl.DateTimeFormat('zh-TW',{
+      timeZone:'Asia/Taipei',
+      month:'2-digit',
+      day:'2-digit',
+      hour:'2-digit',
+      minute:'2-digit',
+      hour12:false
+    }).format(new Date(iso));
+  }
+
+  const card = document.createElement('div');
+  card.className = 'card match';
+  card.innerHTML = `
+    <div class="topline">
+      <div>
+        <div class="title">${left.name || '-'} vs ${right.name || '-'}</div>
+        <div class="sub">${leagueName}｜台灣時間 ${shortTime(event.date)}</div>
+      </div>
+      <div class="tag">近10 / 主客近10</div>
+    </div>
+    <div class="versus-card">
+      <table class="versus-table">
+        <tr>
+          <td class="team-side"><span class="small-top">${leagueName}</span>${left.side ? `<span class="team-role">${left.side}</span>` : ''}</td>
+          <td class="stat-name">項目</td>
+          <td class="team-side"><span class="small-top">${leagueName}</span>${right.side ? `<span class="team-role">${right.side}</span>` : ''}</td>
+        </tr>
+        <tr>
+          <td><span class="stat-main">${fmtAvg(left.avgAll, allEnough)}</span></td>
+          <td class="stat-name">近10平均得 / 失分</td>
+          <td><span class="stat-main">${fmtAvg(right.avgAll, allEnough)}</span></td>
+        </tr>
+        <tr>
+          <td><span class="stat-main ${netClass(left.netAll, right.netAll, allEligible)}">${fmtNet(left.netAll, allEnough)}</span></td>
+          <td class="stat-name">近10淨值</td>
+          <td><span class="stat-main ${netClass(right.netAll, left.netAll, allEligible)}">${fmtNet(right.netAll, allEnough)}</span></td>
+        </tr>
+        <tr>
+          <td><span class="stat-main ${sumClass(left.sumAll, right.sumAll, allEligible)}">${fmtSum(left.sumAll, allEnough)}</span></td>
+          <td class="stat-name">近10相加</td>
+          <td><span class="stat-main ${sumClass(right.sumAll, left.sumAll, allEligible)}">${fmtSum(right.sumAll, allEnough)}</span></td>
+        </tr>
+        <tr>
+          <td><span class="stat-main">${fmtAvg(left.avgSide, sideEnough)}</span></td>
+          <td class="stat-name">主客近10平均得 / 失分</td>
+          <td><span class="stat-main">${fmtAvg(right.avgSide, sideEnough)}</span></td>
+        </tr>
+        <tr>
+          <td><span class="stat-main ${netClass(left.netSide, right.netSide, sideEligible)}">${fmtNet(left.netSide, sideEnough)}</span></td>
+          <td class="stat-name">主客近10淨值</td>
+          <td><span class="stat-main ${netClass(right.netSide, left.netSide, sideEligible)}">${fmtNet(right.netSide, sideEnough)}</span></td>
+        </tr>
+        <tr>
+          <td><span class="stat-main ${sumClass(left.sumSide, right.sumSide, sideEligible)}">${fmtSum(left.sumSide, sideEnough)}</span></td>
+          <td class="stat-name">主客近10相加</td>
+          <td><span class="stat-main ${sumClass(right.sumSide, left.sumSide, sideEligible)}">${fmtSum(right.sumSide, sideEnough)}</span></td>
+        </tr>
+      </table>
+    </div>
+    <div class="bet-box">
+      <div class="bet-head"><div class="bet-pick">近10讓分：${spreadText(left.netAll, right.netAll, allEligible, allEnough)}</div></div>
+      <div class="bet-sub">近10大小淨值：${totalByNet(left.avgAll, right.avgAll, left.netAll, right.netAll, allEligible, allEnough)}</div>
+      <div class="bet-sub">近10大小相加：${totalBySum(left.avgAll, right.avgAll, left.sumAll, right.sumAll, allEligible, allEnough)}</div>
+      <div class="bet-sub">主客讓分：${spreadText(left.netSide, right.netSide, sideEligible, sideEnough)}</div>
+      <div class="bet-sub">主客大小淨值：${totalByNet(left.avgSide, right.avgSide, left.netSide, right.netSide, sideEligible, sideEnough)}</div>
+      <div class="bet-sub">主客大小相加：${totalBySum(left.avgSide, right.avgSide, left.sumSide, right.sumSide, sideEligible, sideEnough)}</div>
+    </div>`;
+  return card;
+}
+
+async function loadGames(offsetDays) {
+  currentOffsetDays = offsetDays;
+  try {
+    setBusy(true);
+    contentEl.innerHTML = '';
+    near10ContentEl.innerHTML = '';
+    statusEl.textContent = '更新中...';
+    near10StatusEl.textContent = '更新中...';
+    const now = new Date();
+    const target = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    target.setDate(target.getDate() + offsetDays);
+    const yyyymmdd = fmtDate(target);
+
+    const leagues = [];
+    if (nbaToggle.checked) leagues.push(CONFIG.nba);
+    if (mlbToggle.checked) leagues.push(CONFIG.mlb);
+    if (!leagues.length) { statusEl.textContent = '請至少勾選一個聯盟'; return; }
+
+    let totalMatches = 0;
+    let filledRows = 0;
+    const candidateCards = [];
+
+    for (const conf of leagues) {
+      statusEl.textContent = `更新中：抓 ${conf.name} 賽程...`;
+      const rawEvents = await getScoreboard(conf, yyyymmdd);
+      const officialEvents = rawEvents.filter(ev => (ev.competitions?.[0]?.competitors || []).length >= 2 && isOfficialGame(conf, ev));
+      const fallbackEvents = rawEvents.filter(ev => (ev.competitions?.[0]?.competitors || []).length >= 2);
+      const events = officialEvents.length ? officialEvents : fallbackEvents;
+
+      if (!events.length) {
+        contentEl.insertAdjacentHTML('beforeend', `<div class="card match muted">${conf.name} 這天沒有可顯示賽程。</div>`);
+        near10ContentEl.insertAdjacentHTML('beforeend', `<div class="card match muted">${conf.name} 這天沒有可顯示賽程。</div>`);
+        continue;
+      }
+
+      if (!officialEvents.length && fallbackEvents.length) {
+        contentEl.insertAdjacentHTML('beforeend', `<div class="note">${conf.name} 這天抓不到明確正式賽標記，已改成全部賽程都顯示。</div>`);
+        near10ContentEl.insertAdjacentHTML('beforeend', `<div class="note">${conf.name} 這天抓不到明確正式賽標記，已改成全部賽程都顯示。</div>`);
+      }
+
+      for (let idx=0; idx<events.length; idx++) {
+        const event = events[idx];
+        const competitors = (event.competitions?.[0]?.competitors || []).filter(c => c?.team?.id);
+        if (competitors.length < 2) continue;
+
+        statusEl.textContent = `更新中：${conf.name} ${idx+1}/${events.length} ${competitors.map(c => teamNameZh(conf.key, c.team)).join(' vs ')}`;
+        const statsEntries = await Promise.all(
+          competitors.map(async c => [String(c.team.id), await getTeamRecentGamesByScoreboards(conf, c.team.id, event.date)])
+        );
+
+        const teamStatsMap = new Map(statsEntries);
+        for (const [, stats] of statsEntries) if (stats.length) filledRows++;
+
+        const card = buildMatchCard(conf.name, conf.key, event, teamStatsMap);
+        const near10Card = buildNear10Card(conf.name, conf.key, event, teamStatsMap);
+        if (near10Card) near10ContentEl.appendChild(near10Card);
+        if (card.dataset.show === '1') {
+          candidateCards.push(card);
+          totalMatches++;
+        }
+      }
+    }
+
+    candidateCards
+      .sort((a, b) => Number(b.dataset.rank || 0) - Number(a.dataset.rank || 0))
+      .forEach(card => contentEl.appendChild(card));
+
+    if (!totalMatches) {
+      const targetLabel = offsetDays === 0 ? '今天' : '明天';
+      contentEl.innerHTML = `<div class="card match muted">${targetLabel} 目前沒有達到EDGE門檻的場次。</div>`;
+    } else if (!filledRows) {
+      contentEl.insertAdjacentHTML('afterbegin', `<div class="note">賽程有抓到，但近期得失分仍為空白。這通常代表瀏覽器把外部資料請求擋住了。</div>`);
+      near10ContentEl.insertAdjacentHTML('afterbegin', `<div class="note">賽程有抓到，但近期得失分仍為空白。這通常代表瀏覽器把外部資料請求擋住了。</div>`);
+    }
+    if (!near10ContentEl.children.length) {
+      const targetLabel = offsetDays === 0 ? '今天' : '明天';
+      near10ContentEl.innerHTML = `<div class="card match muted">${targetLabel} 沒有可顯示的近10 / 主客近10資料。</div>`;
+    }
+
+    statusEl.textContent = `最後更新：${new Date().toLocaleString('zh-TW',{hour12:false})}`;
+    near10StatusEl.textContent = `最後更新：${new Date().toLocaleString('zh-TW',{hour12:false})}`;
+  } catch (err) {
+    console.error(err);
+    contentEl.innerHTML = `<div class="error">更新失敗。若反覆失敗，多半是瀏覽器或代理暫時擋住外部請求。</div>`;
+    near10ContentEl.innerHTML = `<div class="error">更新失敗。若反覆失敗，多半是瀏覽器或代理暫時擋住外部請求。</div>`;
+    statusEl.textContent = '更新失敗';
+    near10StatusEl.textContent = '更新失敗';
+  } finally {
+    setBusy(false);
+  }
+}
+todayBtn.addEventListener('click', ()=>loadGames(0));
+tomorrowBtn.addEventListener('click', ()=>loadGames(1));
+nbaToggle.addEventListener('change', ()=>{ loadGames(currentOffsetDays); if (!statsPage.classList.contains('hidden')) updateRecordSummary(); });
+mlbToggle.addEventListener('change', ()=>{ loadGames(currentOffsetDays); if (!statsPage.classList.contains('hidden')) updateRecordSummary(); });
+recommendTabBtn.addEventListener('click', ()=>setActivePage('recommend'));
+near10TabBtn.addEventListener('click', ()=>setActivePage('near10'));
+statsTabBtn.addEventListener('click', ()=>setActivePage('stats'));
+
+loadGames(0);
+</script>
+</body>
+</html>
