@@ -20,6 +20,10 @@ SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "").strip()
 WORKSHEET_NAME = os.getenv("WORKSHEET_NAME", "results").strip()
 GOOGLE_SERVICE_ACCOUNT_JSON = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
 
+# 快取，避免每次 /save_result 都重抓 worksheet / header
+_WS = None
+_HEADER_READY = False
+
 
 def safe_str(value):
     if value is None:
@@ -50,6 +54,11 @@ def get_gspread_client():
 
 
 def get_worksheet():
+    global _WS
+
+    if _WS is not None:
+        return _WS
+
     if not SPREADSHEET_ID:
         raise RuntimeError("Missing SPREADSHEET_ID")
 
@@ -57,58 +66,93 @@ def get_worksheet():
     sh = gc.open_by_key(SPREADSHEET_ID)
 
     try:
-        ws = sh.worksheet(WORKSHEET_NAME)
+        _WS = sh.worksheet(WORKSHEET_NAME)
     except gspread.WorksheetNotFound:
-        ws = sh.add_worksheet(title=WORKSHEET_NAME, rows=1000, cols=30)
-        ensure_header(ws)
+        _WS = sh.add_worksheet(title=WORKSHEET_NAME, rows=1000, cols=40)
 
-    return ws
+    return _WS
 
 
 def ensure_header(ws):
-    values = ws.get_all_values()
-    if values:
+    global _HEADER_READY
+
+    if _HEADER_READY:
         return
 
     header = [
-        "game_id",
-        "league",
-        "sport",
-        "game_date",
-        "commence_time",
-        "home_team",
-        "away_team",
-        "pick",
-        "result",
-        "status",
-        "odds",
-        "bookmaker",
-        "market",
-        "model_name",
-        "notes",
+        "比賽ID",
+        "聯盟",
+        "賽季",
+        "比賽日期",
+        "對戰",
+        "主隊",
+        "客隊",
+        "最終比分",
+        "判定時間",
+        "更新時間",
+        "讓分盤",
+        "大小分盤",
+        "EDGE讓分值",
+        "EDGE大小值",
+        "近10讓分推薦",
+        "近10大小_淨值推薦",
+        "近10大小_相加推薦",
+        "主客讓分推薦",
+        "主客大小_淨值推薦",
+        "主客大小_相加推薦",
+        "EDGE讓分推薦",
+        "EDGE大小推薦",
+        "近10讓分結果",
+        "近10大小_淨值結果",
+        "近10大小_相加結果",
+        "主客讓分結果",
+        "主客大小_淨值結果",
+        "主客大小_相加結果",
+        "EDGE讓分結果",
+        "EDGE大小結果",
         "raw_payload",
         "saved_at_utc",
     ]
-    ws.append_row(header, value_input_option="USER_ENTERED")
+
+    first_row = ws.row_values(1)
+    if not first_row:
+        ws.append_row(header, value_input_option="USER_ENTERED")
+
+    _HEADER_READY = True
 
 
 def build_row_from_payload(data):
     row = [
-        safe_str(pick_first(data, "game_id", "event_id", "id")),
-        safe_str(pick_first(data, "league")),
-        safe_str(pick_first(data, "sport")),
-        safe_str(pick_first(data, "game_date", "date")),
-        safe_str(pick_first(data, "commence_time", "start_time")),
-        safe_str(pick_first(data, "home_team", "home")),
-        safe_str(pick_first(data, "away_team", "away")),
-        safe_str(pick_first(data, "pick", "prediction", "recommended_pick")),
-        safe_str(pick_first(data, "result", "outcome")),
-        safe_str(pick_first(data, "status")),
-        safe_str(pick_first(data, "odds", "price")),
-        safe_str(pick_first(data, "bookmaker", "book")),
-        safe_str(pick_first(data, "market")),
-        safe_str(pick_first(data, "model_name")),
-        safe_str(pick_first(data, "notes", "remark")),
+        safe_str(pick_first(data, "比賽ID", "game_id", "event_id", "id")),
+        safe_str(pick_first(data, "聯盟", "league")),
+        safe_str(pick_first(data, "賽季", "season")),
+        safe_str(pick_first(data, "比賽日期", "game_date", "date")),
+        safe_str(pick_first(data, "對戰", "matchup")),
+        safe_str(pick_first(data, "主隊", "home_team", "home")),
+        safe_str(pick_first(data, "客隊", "away_team", "away")),
+        safe_str(pick_first(data, "最終比分", "final_score", "score")),
+        safe_str(pick_first(data, "判定時間", "judged_at")),
+        safe_str(pick_first(data, "更新時間", "updated_at")),
+        safe_str(pick_first(data, "讓分盤", "spread_line")),
+        safe_str(pick_first(data, "大小分盤", "total_line")),
+        safe_str(pick_first(data, "EDGE讓分值", "edge_spread_value")),
+        safe_str(pick_first(data, "EDGE大小值", "edge_total_value")),
+        safe_str(pick_first(data, "近10讓分推薦")),
+        safe_str(pick_first(data, "近10大小_淨值推薦")),
+        safe_str(pick_first(data, "近10大小_相加推薦")),
+        safe_str(pick_first(data, "主客讓分推薦")),
+        safe_str(pick_first(data, "主客大小_淨值推薦")),
+        safe_str(pick_first(data, "主客大小_相加推薦")),
+        safe_str(pick_first(data, "EDGE讓分推薦")),
+        safe_str(pick_first(data, "EDGE大小推薦")),
+        safe_str(pick_first(data, "近10讓分結果")),
+        safe_str(pick_first(data, "近10大小_淨值結果")),
+        safe_str(pick_first(data, "近10大小_相加結果")),
+        safe_str(pick_first(data, "主客讓分結果")),
+        safe_str(pick_first(data, "主客大小_淨值結果")),
+        safe_str(pick_first(data, "主客大小_相加結果")),
+        safe_str(pick_first(data, "EDGE讓分結果")),
+        safe_str(pick_first(data, "EDGE大小結果")),
         safe_str(data),
         datetime.utcnow().isoformat(),
     ]
@@ -128,6 +172,7 @@ def index():
 def health():
     try:
         ws = get_worksheet()
+        ensure_header(ws)
         return jsonify({
             "ok": True,
             "worksheet": ws.title,
@@ -175,9 +220,6 @@ def save_result():
             "type": e.__class__.__name__,
         }), 500
 
-
-# 你原本如果有 scoreboard 或 proxy 路由，可保留原版
-# 下面只是避免 history script 打到不存在時完全沒訊息
 
 @app.route("/scoreboard", methods=["GET"])
 def scoreboard():
