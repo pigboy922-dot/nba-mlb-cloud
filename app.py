@@ -185,6 +185,103 @@ def health():
         }), 500
 
 
+@app.route("/debug_sheet", methods=["GET"])
+def debug_sheet():
+    try:
+        ws = get_worksheet()
+        return jsonify({
+            "ok": True,
+            "spreadsheet_id": SPREADSHEET_ID,
+            "worksheet_name_env": WORKSHEET_NAME,
+            "worksheet_title_actual": ws.title,
+            "row_count": ws.row_count,
+            "col_count": ws.col_count,
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "ok": False,
+            "error": str(e),
+            "type": e.__class__.__name__,
+            "spreadsheet_id": SPREADSHEET_ID,
+            "worksheet_name_env": WORKSHEET_NAME,
+        }), 500
+
+
+@app.route("/debug_peek", methods=["GET"])
+def debug_peek():
+    try:
+        ws = get_worksheet()
+        values = ws.get("A1:AF10")
+        return jsonify({
+            "ok": True,
+            "worksheet_title_actual": ws.title,
+            "preview": values,
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "ok": False,
+            "error": str(e),
+            "type": e.__class__.__name__,
+        }), 500
+
+
+@app.route("/debug_write", methods=["GET"])
+def debug_write():
+    try:
+        ws = get_worksheet()
+        ensure_header(ws)
+
+        row = [
+            "DEBUG_TEST_ID",
+            "DEBUG",
+            "2026",
+            "2026-04-16",
+            "debug vs debug",
+            "主隊",
+            "客隊",
+            "1:0",
+            "2026-04-16T00:00:00+08:00",
+            "2026-04-16T00:00:00+08:00",
+            "",
+            "",
+            "",
+            "",
+            "PASS",
+            "PASS",
+            "PASS",
+            "PASS",
+            "PASS",
+            "PASS",
+            "PASS",
+            "PASS",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            '{"debug": true}',
+            datetime.utcnow().isoformat(),
+        ]
+
+        ws.append_row(row, value_input_option="USER_ENTERED")
+
+        return jsonify({
+            "ok": True,
+            "worksheet": ws.title,
+            "spreadsheet_id": SPREADSHEET_ID,
+            "message": "debug row written",
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "ok": False,
+            "error": str(e),
+            "type": e.__class__.__name__,
+        }), 500
+
+
 @app.route("/save_result", methods=["POST"])
 def save_result():
     try:
