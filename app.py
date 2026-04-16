@@ -2,8 +2,6 @@ import json
 import os
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlencode
-from urllib.request import Request, urlopen
 
 import gspread
 from flask import Flask, jsonify, request
@@ -16,8 +14,6 @@ CORS(app)
 TZ_OFFSET = timedelta(hours=8)
 SPREADSHEET_ID = os.getenv('GOOGLE_SHEET_ID', '').strip()
 GOOGLE_CREDENTIALS_JSON = os.getenv('GOOGLE_CREDENTIALS_JSON', '').strip()
-DEBUG_SAVE_RESULT = os.getenv('DEBUG_SAVE_RESULT', '1').strip() == '1'
-ESPN_TIMEOUT = int(os.getenv('ESPN_TIMEOUT', '15'))
 
 HEADERS = [
     '比賽ID', '聯盟', '賽季', '比賽日期', '對戰', '主隊', '客隊', '最終比分',
@@ -41,15 +37,6 @@ RESULT_COLUMNS = [
 
 def taipei_now() -> datetime:
     return datetime.utcnow() + TZ_OFFSET
-
-
-def taipei_now_text() -> str:
-    return taipei_now().strftime('%Y-%m-%d %H:%M:%S')
-
-
-def debug_log(*parts: Any) -> None:
-    if DEBUG_SAVE_RESULT:
-        print(*parts, flush=True)
 
 
 def build_credentials() -> Credentials:
@@ -176,6 +163,7 @@ def calc_summary(rows: List[Dict[str, Any]], result_col: str, mode: str) -> Dict
 
     graded = win + lose
     rate = round(win / graded * 100, 1) if graded else 0.0
+
     return {
         'win': win,
         'lose': lose,
@@ -185,21 +173,12 @@ def calc_summary(rows: List[Dict[str, Any]], result_col: str, mode: str) -> Dict
     }
 
 
-def fetch_json(url: str) -> Dict[str, Any]:
-    req = Request(url, headers={
-        'User-Agent': 'Mozilla/5.0',
-        'Accept': 'application/json,text/plain,*/*'
-    })
-    with urlopen(req, timeout=ESPN_TIMEOUT) as resp:
-        body = resp.read().decode('utf-8')
-        return json.loads(body)
-
-
 @app.get('/ping')
 def ping():
-    return jsonify({'ok': True, 'time': taipei_now_text()})
+    return jsonify({'ok': True, 'time': taipei_now().strftime('%Y-%m-%d %H:%M:%S')})
 
 
+# ✅ 已修改這裡（支援 GET + POST）
 @app.route('/init_sheet', methods=['GET', 'POST'])
 def init_sheet():
     payload = request.get_json(silent=True) or {}
@@ -223,9 +202,7 @@ def save_result():
         league = clean_str(payload.get('聯盟'))
         season = clean_str(payload.get('賽季')) or get_season_year(league, clean_str(payload.get('比賽日期')))
         payload['賽季'] = season
-        payload.setdefault('更新時間', taipei_now_text())
-
-        debug_log('save_result payload =', json.dumps(payload, ensure_ascii=False))
+        payload.setdefault('更新時間', taipei_now().strftime('%Y-%m-%d %H:%M:%S'))
 
         ws = get_or_create_sheet(league, season)
         row = payload_to_row(payload)
@@ -238,14 +215,11 @@ def save_result():
             action = 'updated'
         else:
             ws.append_row(row, value_input_option='USER_ENTERED')
-            row_no = len(ws.col_values(1))
             action = 'inserted'
 
-        debug_log('save_result action =', action, 'row_no =', row_no)
-        return jsonify({'ok': True, 'action': action, 'row_no': row_no, 'sheet': ws.title})
+        return jsonify({'ok': True, 'action': action})
 
     except Exception as exc:
-        debug_log('save_result error =', str(exc))
         return jsonify({'ok': False, 'error': str(exc)}), 500
 
 
@@ -257,6 +231,7 @@ def stats():
     try:
         ws = get_or_create_sheet(league, season)
         rows = ws.get_all_records(expected_headers=HEADERS)
+
         summary = {
             col: {
                 'week': calc_summary(rows, col, 'week'),
@@ -265,7 +240,9 @@ def stats():
             }
             for col in RESULT_COLUMNS
         }
-        return jsonify({'ok': True, 'summary': summary, 'rows': rows})
+
+        return jsonify({'ok': True, 'summary': summary})
+
     except Exception as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 500
 
@@ -274,50 +251,18 @@ def stats():
 def results():
     league = clean_str(request.args.get('league') or 'NBA')
     season = clean_str(request.args.get('season') or str(taipei_now().year))
+    limit_raw = clean_str(request.args.get('limit') or '200')
+    try:
+        limit = max(1, min(int(limit_raw), 5000))
+    except Exception:
+        limit = 200
 
     try:
         ws = get_or_create_sheet(league, season)
         rows = ws.get_all_records(expected_headers=HEADERS)
-        rows = list(reversed(rows))[:200]
-        return jsonify({'ok': True, 'rows': rows})
-    except Exception as exc:
-        return jsonify({'ok': False, 'error': str(exc)}), 500
+        rows = list(reversed(rows))[:limit]
+        return jsonify({'ok': True, 'rows': rows, 'limit': limit, 'count': len(rows)})
 
-
-@app.get('/proxy/scoreboard')
-@app.get('/scoreboard')
-def proxy_scoreboard():
-    sport = clean_str(request.args.get('sport') or 'baseball')
-    league = clean_str(request.args.get('league') or 'mlb')
-    dates = clean_str(request.args.get('dates'))
-    if not dates:
-        return jsonify({'ok': False, 'error': '缺少 dates'}), 400
-
-    query = urlencode({'dates': dates})
-    url = f'https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/scoreboard?{query}'
-    try:
-        data = fetch_json(url)
-        return jsonify(data)
-    except Exception as exc:
-        return jsonify({'ok': False, 'error': str(exc), 'url': url}), 500
-
-
-@app.get('/debug_result')
-def debug_result():
-    league = clean_str(request.args.get('league') or 'NBA')
-    season = clean_str(request.args.get('season') or str(taipei_now().year))
-    game_id = clean_str(request.args.get('game_id'))
-    if not game_id:
-        return jsonify({'ok': False, 'error': '缺少 game_id'}), 400
-
-    try:
-        ws = get_or_create_sheet(league, season)
-        row_no = find_row_by_game_id(ws, game_id)
-        if not row_no:
-            return jsonify({'ok': True, 'found': False, 'sheet': ws.title})
-        row_values = ws.row_values(row_no)
-        row_map = {HEADERS[i]: row_values[i] if i < len(row_values) else '' for i in range(len(HEADERS))}
-        return jsonify({'ok': True, 'found': True, 'sheet': ws.title, 'row_no': row_no, 'row': row_map})
     except Exception as exc:
         return jsonify({'ok': False, 'error': str(exc)}), 500
 
