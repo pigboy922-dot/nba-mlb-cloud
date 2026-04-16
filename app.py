@@ -20,9 +20,8 @@ SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "").strip()
 WORKSHEET_NAME = os.getenv("WORKSHEET_NAME", "results").strip()
 GOOGLE_SERVICE_ACCOUNT_JSON = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
 
-# 快取，避免每次 /save_result 都重抓 worksheet / header
 _WS = None
-_HEADER_READY = False
+_HEADER = None
 
 
 def safe_str(value):
@@ -31,13 +30,6 @@ def safe_str(value):
     if isinstance(value, (dict, list)):
         return json.dumps(value, ensure_ascii=False)
     return str(value)
-
-
-def pick_first(data, *keys, default=""):
-    for key in keys:
-        if key in data and data.get(key) is not None:
-            return data.get(key)
-    return default
 
 
 def get_gspread_client():
@@ -68,94 +60,71 @@ def get_worksheet():
     try:
         _WS = sh.worksheet(WORKSHEET_NAME)
     except gspread.WorksheetNotFound:
-        _WS = sh.add_worksheet(title=WORKSHEET_NAME, rows=1000, cols=40)
+        _WS = sh.add_worksheet(title=WORKSHEET_NAME, rows=2000, cols=80)
 
     return _WS
 
 
-def ensure_header(ws):
-    global _HEADER_READY
+def get_header(ws):
+    global _HEADER
 
-    if _HEADER_READY:
-        return
-
-    header = [
-        "比賽ID",
-        "聯盟",
-        "賽季",
-        "比賽日期",
-        "對戰",
-        "主隊",
-        "客隊",
-        "最終比分",
-        "判定時間",
-        "更新時間",
-        "讓分盤",
-        "大小分盤",
-        "EDGE讓分值",
-        "EDGE大小值",
-        "近10讓分推薦",
-        "近10大小_淨值推薦",
-        "近10大小_相加推薦",
-        "主客讓分推薦",
-        "主客大小_淨值推薦",
-        "主客大小_相加推薦",
-        "EDGE讓分推薦",
-        "EDGE大小推薦",
-        "近10讓分結果",
-        "近10大小_淨值結果",
-        "近10大小_相加結果",
-        "主客讓分結果",
-        "主客大小_淨值結果",
-        "主客大小_相加結果",
-        "EDGE讓分結果",
-        "EDGE大小結果",
-        "raw_payload",
-        "saved_at_utc",
-    ]
+    if _HEADER is not None:
+        return _HEADER
 
     first_row = ws.row_values(1)
-    if not first_row:
-        ws.append_row(header, value_input_option="USER_ENTERED")
-
-    _HEADER_READY = True
+    _HEADER = [h.strip() for h in first_row if str(h).strip()]
+    return _HEADER
 
 
-def build_row_from_payload(data):
-    row = [
-        safe_str(pick_first(data, "比賽ID", "game_id", "event_id", "id")),
-        safe_str(pick_first(data, "聯盟", "league")),
-        safe_str(pick_first(data, "賽季", "season")),
-        safe_str(pick_first(data, "比賽日期", "game_date", "date")),
-        safe_str(pick_first(data, "對戰", "matchup")),
-        safe_str(pick_first(data, "主隊", "home_team", "home")),
-        safe_str(pick_first(data, "客隊", "away_team", "away")),
-        safe_str(pick_first(data, "最終比分", "final_score", "score")),
-        safe_str(pick_first(data, "判定時間", "judged_at")),
-        safe_str(pick_first(data, "更新時間", "updated_at")),
-        safe_str(pick_first(data, "讓分盤", "spread_line")),
-        safe_str(pick_first(data, "大小分盤", "total_line")),
-        safe_str(pick_first(data, "EDGE讓分值", "edge_spread_value")),
-        safe_str(pick_first(data, "EDGE大小值", "edge_total_value")),
-        safe_str(pick_first(data, "近10讓分推薦")),
-        safe_str(pick_first(data, "近10大小_淨值推薦")),
-        safe_str(pick_first(data, "近10大小_相加推薦")),
-        safe_str(pick_first(data, "主客讓分推薦")),
-        safe_str(pick_first(data, "主客大小_淨值推薦")),
-        safe_str(pick_first(data, "主客大小_相加推薦")),
-        safe_str(pick_first(data, "EDGE讓分推薦")),
-        safe_str(pick_first(data, "EDGE大小推薦")),
-        safe_str(pick_first(data, "近10讓分結果")),
-        safe_str(pick_first(data, "近10大小_淨值結果")),
-        safe_str(pick_first(data, "近10大小_相加結果")),
-        safe_str(pick_first(data, "主客讓分結果")),
-        safe_str(pick_first(data, "主客大小_淨值結果")),
-        safe_str(pick_first(data, "主客大小_相加結果")),
-        safe_str(pick_first(data, "EDGE讓分結果")),
-        safe_str(pick_first(data, "EDGE大小結果")),
-        safe_str(data),
-        datetime.utcnow().isoformat(),
-    ]
+def normalize_score_text(value):
+    s = safe_str(value).strip()
+    if not s:
+        return ""
+    # 強制當文字，避免 109:93 被 Sheets 轉成時間
+    if not s.startswith("'"):
+        s = "'" + s
+    return s
+
+
+def alias_value(data, col_name):
+    if col_name in data and data.get(col_name) is not None:
+        return data.get(col_name)
+
+    alias_map = {
+        "比賽ID": ["game_id", "event_id", "id"],
+        "聯盟": ["league"],
+        "賽季": ["season"],
+        "比賽日期": ["game_date", "date"],
+        "對戰": ["matchup"],
+        "主隊": ["home_team", "home"],
+        "客隊": ["away_team", "away"],
+        "最終比分": ["final_score", "score"],
+        "判定時間": ["judged_at"],
+        "更新時間": ["updated_at"],
+        "讓分盤": ["spread_line"],
+        "大小分盤": ["total_line"],
+        "EDGE讓分值": ["edge_spread_value"],
+        "EDGE大小值": ["edge_total_value"],
+    }
+
+    for key in alias_map.get(col_name, []):
+        if key in data and data.get(key) is not None:
+            return data.get(key)
+
+    return ""
+
+
+def build_row_from_existing_header(data, header):
+    row = []
+
+    for col in header:
+        value = alias_value(data, col)
+
+        if col == "最終比分":
+            row.append(normalize_score_text(value))
+        else:
+            row.append(safe_str(value))
+
     return row
 
 
@@ -172,10 +141,11 @@ def index():
 def health():
     try:
         ws = get_worksheet()
-        ensure_header(ws)
+        header = get_header(ws)
         return jsonify({
             "ok": True,
             "worksheet": ws.title,
+            "header_count": len(header),
         }), 200
     except Exception as e:
         return jsonify({
@@ -189,6 +159,7 @@ def health():
 def debug_sheet():
     try:
         ws = get_worksheet()
+        header = get_header(ws)
         return jsonify({
             "ok": True,
             "spreadsheet_id": SPREADSHEET_ID,
@@ -196,14 +167,13 @@ def debug_sheet():
             "worksheet_title_actual": ws.title,
             "row_count": ws.row_count,
             "col_count": ws.col_count,
+            "header": header,
         }), 200
     except Exception as e:
         return jsonify({
             "ok": False,
             "error": str(e),
             "type": e.__class__.__name__,
-            "spreadsheet_id": SPREADSHEET_ID,
-            "worksheet_name_env": WORKSHEET_NAME,
         }), 500
 
 
@@ -211,7 +181,7 @@ def debug_sheet():
 def debug_peek():
     try:
         ws = get_worksheet()
-        values = ws.get("A1:AF10")
+        values = ws.get("A1:AZ10")
         return jsonify({
             "ok": True,
             "worksheet_title_actual": ws.title,
@@ -225,54 +195,38 @@ def debug_peek():
         }), 500
 
 
-@app.route("/debug_write", methods=["GET"])
-def debug_write():
+@app.route("/debug_write_fixed", methods=["GET"])
+def debug_write_fixed():
     try:
         ws = get_worksheet()
-        ensure_header(ws)
+        header = get_header(ws)
+        if not header:
+            return jsonify({
+                "ok": False,
+                "error": "results 第1列沒有表頭，請先把 NBA_2026 的第1列複製到 results 第1列"
+            }), 400
 
-        row = [
-            "DEBUG_TEST_ID",
-            "DEBUG",
-            "2026",
-            "2026-04-16",
-            "debug vs debug",
-            "主隊",
-            "客隊",
-            "1:0",
-            "2026-04-16T00:00:00+08:00",
-            "2026-04-16T00:00:00+08:00",
-            "",
-            "",
-            "",
-            "",
-            "PASS",
-            "PASS",
-            "PASS",
-            "PASS",
-            "PASS",
-            "PASS",
-            "PASS",
-            "PASS",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            '{"debug": true}',
-            datetime.utcnow().isoformat(),
-        ]
+        payload = {
+            "比賽ID": "FIXED_TEST_ID",
+            "聯盟": "DEBUG",
+            "賽季": "2026",
+            "比賽日期": "2026-04-16",
+            "對戰": "fixed vs debug",
+            "主隊": "主隊",
+            "客隊": "客隊",
+            "最終比分": "1:0",
+            "判定時間": "2026-04-16T00:00:00+08:00",
+            "更新時間": "2026-04-16T00:00:00+08:00",
+        }
 
-        ws.append_row(row, value_input_option="USER_ENTERED")
+        row = build_row_from_existing_header(payload, header)
+        end_col = gspread.utils.rowcol_to_a1(2, len(header)).rstrip("2")
+        ws.update(f"A2:{end_col}2", [row], value_input_option="RAW")
 
         return jsonify({
             "ok": True,
             "worksheet": ws.title,
-            "spreadsheet_id": SPREADSHEET_ID,
-            "message": "debug row written",
+            "message": "fixed row written to row 2",
         }), 200
     except Exception as e:
         return jsonify({
@@ -295,12 +249,18 @@ def save_result():
             }), 400
 
         ws = get_worksheet()
-        ensure_header(ws)
+        header = get_header(ws)
 
-        row = build_row_from_payload(data)
+        if not header:
+            return jsonify({
+                "ok": False,
+                "error": "results 第1列沒有表頭，請先把 NBA_2026 的第1列複製到 results 第1列"
+            }), 400
+
+        row = build_row_from_existing_header(data, header)
         print("SAVE_RESULT row =", json.dumps(row, ensure_ascii=False))
 
-        ws.append_row(row, value_input_option="USER_ENTERED")
+        ws.append_row(row, value_input_option="RAW")
 
         return jsonify({
             "ok": True,
