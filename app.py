@@ -1,8 +1,6 @@
 import os
 import json
 import traceback
-from datetime import datetime
-
 from flask import Flask, request, jsonify
 import gspread
 from google.oauth2.service_account import Credentials
@@ -16,11 +14,16 @@ SCOPES = [
 ]
 
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "").strip()
+
+# 這張當作目前表頭來源 / 預設分頁
 WORKSHEET_NAME = os.getenv("WORKSHEET_NAME", "results").strip()
+
 GOOGLE_SERVICE_ACCOUNT_JSON = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
 
-_WS = None
-_HEADER = None
+_GC = None
+_SHEET = None
+_WS_CACHE = {}
+_HEADER_CACHE = {}
 
 
 def safe_str(value):
@@ -32,52 +35,91 @@ def safe_str(value):
 
 
 def get_gspread_client():
+    global _GC
+
+    if _GC is not None:
+        return _GC
+
     if not GOOGLE_SERVICE_ACCOUNT_JSON:
         raise RuntimeError("Missing GOOGLE_SERVICE_ACCOUNT_JSON")
 
     info = json.loads(GOOGLE_SERVICE_ACCOUNT_JSON)
     creds = Credentials.from_service_account_info(info, scopes=SCOPES)
-    return gspread.authorize(creds)
+    _GC = gspread.authorize(creds)
+    return _GC
 
 
-def get_worksheet():
-    global _WS
+def get_spreadsheet():
+    global _SHEET
 
-    if _WS is not None:
-        return _WS
+    if _SHEET is not None:
+        return _SHEET
 
     if not SPREADSHEET_ID:
         raise RuntimeError("Missing SPREADSHEET_ID")
 
     gc = get_gspread_client()
-    sh = gc.open_by_key(SPREADSHEET_ID)
+    _SHEET = gc.open_by_key(SPREADSHEET_ID)
+    return _SHEET
+
+
+def get_worksheet_by_name(title):
+    global _WS_CACHE
+
+    key = str(title or "").strip()
+    if not key:
+        raise RuntimeError("Worksheet title is empty")
+
+    if key in _WS_CACHE:
+        return _WS_CACHE[key]
+
+    sh = get_spreadsheet()
 
     try:
-        _WS = sh.worksheet(WORKSHEET_NAME)
+        ws = sh.worksheet(key)
     except gspread.WorksheetNotFound:
-        _WS = sh.add_worksheet(title=WORKSHEET_NAME, rows=2000, cols=120)
+        ws = sh.add_worksheet(title=key, rows=2000, cols=120)
 
-    return _WS
+    _WS_CACHE[key] = ws
+    return ws
+
+
+def read_header(ws):
+    first_row = ws.row_values(1)
+    return [str(h).strip() for h in first_row if str(h).strip()]
 
 
 def get_header(ws):
-    global _HEADER
+    global _HEADER_CACHE
 
-    if _HEADER is not None:
-        return _HEADER
+    key = ws.title
+    if key in _HEADER_CACHE:
+        return _HEADER_CACHE[key]
 
-    first_row = ws.row_values(1)
-    _HEADER = [str(h).strip() for h in first_row if str(h).strip()]
-    return _HEADER
+    header = read_header(ws)
+    _HEADER_CACHE[key] = header
+    return header
 
 
-def normalize_score_text(value):
-    s = safe_str(value).strip()
-    if not s:
-        return ""
-    if not s.startswith("'"):
-        s = "'" + s
-    return s
+def set_header(ws, header):
+    global _HEADER_CACHE
+
+    cleaned = [str(h).strip() for h in (header or []) if str(h).strip()]
+    if not cleaned:
+        return
+
+    ws.update("1:1", [cleaned])
+    _HEADER_CACHE[ws.title] = cleaned
+
+
+def get_template_header():
+    template_ws = get_worksheet_by_name(WORKSHEET_NAME)
+    header = get_header(template_ws)
+    if not header:
+        raise RuntimeError(
+            f"{WORKSHEET_NAME} 第1列沒有表頭，請先把目前使用中的表頭放到 {WORKSHEET_NAME} 第1列"
+        )
+    return header
 
 
 def alias_value(data, col_name):
@@ -108,6 +150,15 @@ def alias_value(data, col_name):
     return ""
 
 
+def normalize_score_text(value):
+    s = safe_str(value).strip()
+    if not s:
+        return ""
+    if not s.startswith("'"):
+        s = "'" + s
+    return s
+
+
 def build_row_from_existing_header(data, header):
     row = []
 
@@ -122,6 +173,24 @@ def build_row_from_existing_header(data, header):
     return row
 
 
+def get_target_worksheet_name(data):
+    season = safe_str(alias_value(data, "賽季")).strip()
+    return season if season else WORKSHEET_NAME
+
+
+def ensure_target_worksheet_with_header(data):
+    target_title = get_target_worksheet_name(data)
+    ws = get_worksheet_by_name(target_title)
+    header = get_header(ws)
+
+    if header:
+        return ws, header
+
+    template_header = get_template_header()
+    set_header(ws, template_header)
+    return ws, template_header
+
+
 @app.route("/", methods=["GET"])
 def index():
     return jsonify({
@@ -134,12 +203,16 @@ def index():
 @app.route("/health", methods=["GET"])
 def health():
     try:
-        ws = get_worksheet()
-        header = get_header(ws)
+        sh = get_spreadsheet()
+        template_ws = get_worksheet_by_name(WORKSHEET_NAME)
+        template_header = get_header(template_ws)
+
         return jsonify({
             "ok": True,
-            "worksheet": ws.title,
-            "header_count": len(header),
+            "spreadsheet_id": SPREADSHEET_ID,
+            "template_worksheet": template_ws.title,
+            "template_header_count": len(template_header),
+            "worksheets": [ws.title for ws in sh.worksheets()],
         }), 200
     except Exception as e:
         return jsonify({
@@ -160,21 +233,14 @@ def save_result():
                 "error": "Invalid JSON payload",
             }), 400
 
-        ws = get_worksheet()
-        header = get_header(ws)
-
-        if not header:
-            return jsonify({
-                "ok": False,
-                "error": "results 第1列沒有表頭，先把 2026 分頁第1列複製到 results 第1列"
-            }), 400
-
+        ws, header = ensure_target_worksheet_with_header(data)
         row = build_row_from_existing_header(data, header)
         ws.append_row(row, value_input_option="RAW")
 
         return jsonify({
             "ok": True,
             "message": "saved",
+            "worksheet": ws.title,
         }), 200
 
     except Exception as e:
