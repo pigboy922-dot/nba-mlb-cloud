@@ -191,8 +191,16 @@ def build_row_from_existing_header(data, header):
 
 
 def get_target_worksheet_name(data):
+    league = safe_str(alias_value(data, "聯盟")).strip().upper()
     season = safe_str(alias_value(data, "賽季")).strip()
-    return season if season else WORKSHEET_NAME
+
+    if league and season:
+        return f"{league}_{season}"
+
+    if season:
+        return season
+
+    return WORKSHEET_NAME
 
 
 def ensure_target_worksheet_with_header(data):
@@ -271,6 +279,7 @@ def save_result():
             "header_count": len(header),
             "header_source": header_source or ws.title,
             "game_id": safe_str(alias_value(data, "比賽ID")),
+            "league": safe_str(alias_value(data, "聯盟")),
             "season": safe_str(alias_value(data, "賽季")),
         }), 200
 
