@@ -86,9 +86,10 @@ def read_header(ws):
     return [str(h).strip() for h in first_row if str(h).strip()]
 
 
-def get_header(ws):
+def get_header(ws, force_refresh=False):
     key = ws.title
-    if key in _HEADER_CACHE:
+
+    if not force_refresh and key in _HEADER_CACHE:
         return _HEADER_CACHE[key]
 
     header = read_header(ws)
@@ -105,12 +106,37 @@ def set_header(ws, header):
     _HEADER_CACHE[ws.title] = cleaned
 
 
+def list_worksheets():
+    sh = get_spreadsheet()
+    return sh.worksheets()
+
+
+def find_first_non_empty_header(exclude_titles=None):
+    exclude_titles = set(exclude_titles or [])
+
+    for ws in list_worksheets():
+        if ws.title in exclude_titles:
+            continue
+        header = get_header(ws, force_refresh=True)
+        if header:
+            return ws, header
+
+    return None, []
+
+
 def get_template_header():
     template_ws = get_worksheet_by_name(WORKSHEET_NAME)
-    header = get_header(template_ws)
-    if not header:
-        raise RuntimeError(f"{WORKSHEET_NAME} 第1列沒有表頭")
-    return header
+    header = get_header(template_ws, force_refresh=True)
+    if header:
+        return template_ws, header
+
+    fallback_ws, fallback_header = find_first_non_empty_header(exclude_titles={template_ws.title})
+    if fallback_header:
+        return fallback_ws, fallback_header
+
+    raise RuntimeError(
+        f"找不到可用表頭：{WORKSHEET_NAME} 第1列為空，且其他分頁也沒有表頭"
+    )
 
 
 def normalize_score_text(value):
@@ -172,14 +198,14 @@ def get_target_worksheet_name(data):
 def ensure_target_worksheet_with_header(data):
     target_title = get_target_worksheet_name(data)
     ws = get_worksheet_by_name(target_title)
-    header = get_header(ws)
+    header = get_header(ws, force_refresh=True)
 
     if header:
-        return ws, header
+        return ws, header, None
 
-    template_header = get_template_header()
+    source_ws, template_header = get_template_header()
     set_header(ws, template_header)
-    return ws, template_header
+    return ws, template_header, source_ws.title
 
 
 @app.route("/", methods=["GET"])
@@ -194,16 +220,23 @@ def index():
 @app.route("/health", methods=["GET"])
 def health():
     try:
-        sh = get_spreadsheet()
         template_ws = get_worksheet_by_name(WORKSHEET_NAME)
-        template_header = get_header(template_ws)
+        template_header = get_header(template_ws, force_refresh=True)
+
+        fallback_ws = None
+        fallback_header_count = 0
+        if not template_header:
+            fallback_ws, fallback_header = find_first_non_empty_header(exclude_titles={template_ws.title})
+            fallback_header_count = len(fallback_header)
 
         return jsonify({
             "ok": True,
             "spreadsheet_id": SPREADSHEET_ID,
             "template_worksheet": template_ws.title,
             "template_header_count": len(template_header),
-            "worksheets": [ws.title for ws in sh.worksheets()],
+            "fallback_template_worksheet": fallback_ws.title if fallback_ws else "",
+            "fallback_header_count": fallback_header_count,
+            "worksheets": [ws.title for ws in list_worksheets()],
         }), 200
     except Exception as e:
         return jsonify({
@@ -227,7 +260,7 @@ def save_result():
                 "error": "Invalid JSON payload",
             }), 400
 
-        ws, header = ensure_target_worksheet_with_header(data)
+        ws, header, header_source = ensure_target_worksheet_with_header(data)
         row = build_row_from_existing_header(data, header)
         ws.append_row(row, value_input_option="RAW")
 
@@ -236,6 +269,7 @@ def save_result():
             "message": "saved",
             "worksheet": ws.title,
             "header_count": len(header),
+            "header_source": header_source or ws.title,
             "game_id": safe_str(alias_value(data, "比賽ID")),
             "season": safe_str(alias_value(data, "賽季")),
         }), 200
