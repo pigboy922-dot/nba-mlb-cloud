@@ -35,6 +35,7 @@ def safe_str(value):
 
 def get_gspread_client():
     global _GC
+
     if _GC is not None:
         return _GC
 
@@ -49,6 +50,7 @@ def get_gspread_client():
 
 def get_spreadsheet():
     global _SHEET
+
     if _SHEET is not None:
         return _SHEET
 
@@ -69,6 +71,7 @@ def get_worksheet_by_name(title):
         return _WS_CACHE[key]
 
     sh = get_spreadsheet()
+
     try:
         ws = sh.worksheet(key)
     except gspread.WorksheetNotFound:
@@ -97,6 +100,7 @@ def set_header(ws, header):
     cleaned = [str(h).strip() for h in (header or []) if str(h).strip()]
     if not cleaned:
         return
+
     ws.update("1:1", [cleaned])
     _HEADER_CACHE[ws.title] = cleaned
 
@@ -148,12 +152,15 @@ def alias_value(data, col_name):
 
 def build_row_from_existing_header(data, header):
     row = []
+
     for col in header:
         value = alias_value(data, col)
+
         if col == "最終比分":
             row.append(normalize_score_text(value))
         else:
             row.append(safe_str(value))
+
     return row
 
 
