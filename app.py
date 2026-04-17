@@ -2,11 +2,13 @@ import os
 import json
 import traceback
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import gspread
 from google.oauth2.service_account import Credentials
 
 
 app = Flask(__name__)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -14,10 +16,7 @@ SCOPES = [
 ]
 
 SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "").strip()
-
-# 這張當作目前表頭來源 / 預設分頁
 WORKSHEET_NAME = os.getenv("WORKSHEET_NAME", "results").strip()
-
 GOOGLE_SERVICE_ACCOUNT_JSON = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
 
 _GC = None
@@ -36,7 +35,6 @@ def safe_str(value):
 
 def get_gspread_client():
     global _GC
-
     if _GC is not None:
         return _GC
 
@@ -51,7 +49,6 @@ def get_gspread_client():
 
 def get_spreadsheet():
     global _SHEET
-
     if _SHEET is not None:
         return _SHEET
 
@@ -64,9 +61,7 @@ def get_spreadsheet():
 
 
 def get_worksheet_by_name(title):
-    global _WS_CACHE
-
-    key = str(title or "").strip()
+    key = safe_str(title).strip()
     if not key:
         raise RuntimeError("Worksheet title is empty")
 
@@ -74,7 +69,6 @@ def get_worksheet_by_name(title):
         return _WS_CACHE[key]
 
     sh = get_spreadsheet()
-
     try:
         ws = sh.worksheet(key)
     except gspread.WorksheetNotFound:
@@ -90,8 +84,6 @@ def read_header(ws):
 
 
 def get_header(ws):
-    global _HEADER_CACHE
-
     key = ws.title
     if key in _HEADER_CACHE:
         return _HEADER_CACHE[key]
@@ -102,12 +94,9 @@ def get_header(ws):
 
 
 def set_header(ws, header):
-    global _HEADER_CACHE
-
     cleaned = [str(h).strip() for h in (header or []) if str(h).strip()]
     if not cleaned:
         return
-
     ws.update("1:1", [cleaned])
     _HEADER_CACHE[ws.title] = cleaned
 
@@ -116,10 +105,17 @@ def get_template_header():
     template_ws = get_worksheet_by_name(WORKSHEET_NAME)
     header = get_header(template_ws)
     if not header:
-        raise RuntimeError(
-            f"{WORKSHEET_NAME} 第1列沒有表頭，請先把目前使用中的表頭放到 {WORKSHEET_NAME} 第1列"
-        )
+        raise RuntimeError(f"{WORKSHEET_NAME} 第1列沒有表頭")
     return header
+
+
+def normalize_score_text(value):
+    s = safe_str(value).strip()
+    if not s:
+        return ""
+    if not s.startswith("'"):
+        s = "'" + s
+    return s
 
 
 def alias_value(data, col_name):
@@ -150,26 +146,14 @@ def alias_value(data, col_name):
     return ""
 
 
-def normalize_score_text(value):
-    s = safe_str(value).strip()
-    if not s:
-        return ""
-    if not s.startswith("'"):
-        s = "'" + s
-    return s
-
-
 def build_row_from_existing_header(data, header):
     row = []
-
     for col in header:
         value = alias_value(data, col)
-
         if col == "最終比分":
             row.append(normalize_score_text(value))
         else:
             row.append(safe_str(value))
-
     return row
 
 
@@ -222,8 +206,11 @@ def health():
         }), 500
 
 
-@app.route("/save_result", methods=["POST"])
+@app.route("/save_result", methods=["OPTIONS", "POST"])
 def save_result():
+    if request.method == "OPTIONS":
+        return ("", 204)
+
     try:
         data = request.get_json(force=True, silent=True) or {}
 
@@ -241,6 +228,9 @@ def save_result():
             "ok": True,
             "message": "saved",
             "worksheet": ws.title,
+            "header_count": len(header),
+            "game_id": safe_str(alias_value(data, "比賽ID")),
+            "season": safe_str(alias_value(data, "賽季")),
         }), 200
 
     except Exception as e:
