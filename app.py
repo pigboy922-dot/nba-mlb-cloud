@@ -28,6 +28,8 @@ _GC = None
 _SHEET = None
 _WS_CACHE = {}
 _HEADER_CACHE = {}
+_ESPN_CACHE = {}
+_PLAYSPORT_CACHE = {}
 
 DEFAULT_HEADERS = [
     "比賽ID",
@@ -218,8 +220,16 @@ def normalize_date_to_yyyymmdd(value):
     s = clean_str(value)
     if not s:
         return ""
-    s = s.replace("-", "").replace("/", "")
-    return s[:8]
+    return s.replace("-", "").replace("/", "")[:8]
+
+
+def yyyymmdd_to_date(value):
+    return datetime.strptime(value, "%Y%m%d").date()
+
+
+def shift_yyyymmdd(value, days):
+    d = yyyymmdd_to_date(value) + timedelta(days=days)
+    return d.strftime("%Y%m%d")
 
 
 def alias_value(data, col_name):
@@ -436,7 +446,7 @@ def normalize_name_for_match(name):
     s = clean_str(name)
     if not s:
         return ""
-    return re.sub(r"[\s\-\.·']", "", s).lower()
+    return re.sub(r"[\s\-\.·'’]", "", s).lower()
 
 
 def team_alias_hit(league, sheet_name, page_name):
@@ -447,12 +457,6 @@ def team_alias_hit(league, sheet_name, page_name):
         if normalize_name_for_match(n) == page_norm:
             return True
     return False
-
-
-def team_pair_match(league, away_sheet, home_sheet, away_page, home_page):
-    normal = team_alias_hit(league, away_sheet, away_page) and team_alias_hit(league, home_sheet, home_page)
-    swapped = team_alias_hit(league, away_sheet, home_page) and team_alias_hit(league, home_sheet, away_page)
-    return normal or swapped
 
 
 def espn_scoreboard_url(league_name, yyyymmdd):
@@ -479,6 +483,16 @@ def fetch_json(url):
     r = requests.get(url, timeout=REQUEST_TIMEOUT, headers={"User-Agent": "Mozilla/5.0"})
     r.raise_for_status()
     return r.json()
+
+
+def get_espn_events_for_date(league, yyyymmdd):
+    key = f"{league}:{yyyymmdd}"
+    if key in _ESPN_CACHE:
+        return _ESPN_CACHE[key]
+    data = fetch_json(espn_scoreboard_url(league, yyyymmdd))
+    events = data.get("events") or []
+    _ESPN_CACHE[key] = events
+    return events
 
 
 def extract_market_from_event(event):
@@ -572,14 +586,59 @@ def extract_final_score_from_event(event):
     return f"{away_score}:{home_score}"
 
 
-def find_event_by_game_id(league_name, date_yyyymmdd, game_id):
-    url = espn_scoreboard_url(league_name, date_yyyymmdd)
-    data = fetch_json(url)
-    events = data.get("events") or []
-    for event in events:
-        if clean_str(event.get("id")) == clean_str(game_id):
-            return event
-    return None
+def event_team_names(event):
+    comp = ((event or {}).get("competitions") or [{}])[0]
+    competitors = (comp.get("competitors") or [])[:]
+    competitors.sort(key=lambda x: 0 if x.get("homeAway") == "away" else 1)
+    if len(competitors) < 2:
+        return "", ""
+    away = clean_str(competitors[0].get("team", {}).get("displayName"))
+    home = clean_str(competitors[1].get("team", {}).get("displayName"))
+    return away, home
+
+
+def find_event_smart(league, date_yyyymmdd, game_id, away_team, home_team):
+    candidate_dates = [
+        shift_yyyymmdd(date_yyyymmdd, -1),
+        date_yyyymmdd,
+        shift_yyyymmdd(date_yyyymmdd, 1),
+    ]
+
+    # 1) game_id exact match across ±1 day
+    for d in candidate_dates:
+        try:
+            events = get_espn_events_for_date(league, d)
+        except Exception:
+            continue
+        for event in events:
+            if clean_str(event.get("id")) == clean_str(game_id):
+                return event, f"espn_game_id@{d}"
+
+    # 2) team match across ±1 day
+    for d in candidate_dates:
+        try:
+            events = get_espn_events_for_date(league, d)
+        except Exception:
+            continue
+        for event in events:
+            away_name, home_name = event_team_names(event)
+            away_hit = team_alias_hit(league, away_team, away_name)
+            home_hit = team_alias_hit(league, home_team, home_name)
+            swapped_away_hit = team_alias_hit(league, away_team, home_name)
+            swapped_home_hit = team_alias_hit(league, home_team, away_name)
+            if (away_hit and home_hit) or (swapped_away_hit and swapped_home_hit):
+                return event, f"espn_team_match@{d}"
+
+    return None, "event_not_found"
+
+
+def get_playsport_page(league):
+    key = f"playsport:{league}"
+    if key in _PLAYSPORT_CACHE:
+        return _PLAYSPORT_CACHE[key]
+    text = fetch_text(playsport_result_url(league))
+    _PLAYSPORT_CACHE[key] = text
+    return text
 
 
 def split_playsport_blocks(page_text):
@@ -603,10 +662,10 @@ def parse_playsport_candidate_blocks(page_text):
         score_match = re.search(r"\*\s*(\d+)\s*\n\s*\*\s*V\.S\.\s*\n\s*\*\s*(\d+)", block, re.S)
         final_score = ""
         if score_match:
-            away_score = int(score_match.group(1))
-            home_score = int(score_match.group(2))
-            if not (away_score == 0 and home_score == 0):
-                final_score = f"{away_score}:{home_score}"
+            a = int(score_match.group(1))
+            h = int(score_match.group(2))
+            if not (a == 0 and h == 0):
+                final_score = f"{a}:{h}"
 
         spread_values = re.findall(r"[客主][+-]([0-9]+(?:\.[0-9]+)?)", block)
         total_values = re.findall(r"[大小]\s*([0-9]+(?:\.[0-9]+)?)", block)
@@ -640,23 +699,35 @@ def parse_playsport_candidate_blocks(page_text):
             "final_score": final_score,
             "spread_line": spread_line,
             "total_line": total_line,
-            "raw_block": block[:1200],
         })
 
     return out
 
 
-def find_playsport_match(league, away_team, home_team, page_text):
+def find_playsport_match(league, away_team, home_team):
+    try:
+        page_text = get_playsport_page(league)
+    except Exception:
+        return None, "playsport_fetch_failed"
+
     candidates = parse_playsport_candidate_blocks(page_text)
     best = None
 
     for item in candidates:
-        if team_pair_match(league, away_team, home_team, item["away_name"], item["home_name"]):
+        away_hit = team_alias_hit(league, away_team, item["away_name"])
+        home_hit = team_alias_hit(league, home_team, item["home_name"])
+        swapped_away_hit = team_alias_hit(league, away_team, item["home_name"])
+        swapped_home_hit = team_alias_hit(league, home_team, item["away_name"])
+
+        if (away_hit and home_hit) or (swapped_away_hit and swapped_home_hit):
             best = item
             if item.get("final_score"):
-                return item
+                return item, "playsport_team_match"
 
-    return best
+    if best:
+        return best, "playsport_no_score"
+
+    return None, "playsport_not_found"
 
 
 def fmt_num_for_sheet(v):
@@ -667,7 +738,7 @@ def fmt_num_for_sheet(v):
     return str(v).rstrip("0").rstrip(".")
 
 
-def refresh_row_from_sources(row, playsport_text_cache=None):
+def refresh_row_from_sources(row):
     league = clean_str(row.get("聯盟")).upper()
     game_id = clean_str(row.get("比賽ID"))
     date_key = normalize_date_to_yyyymmdd(row.get("比賽日期"))
@@ -680,11 +751,7 @@ def refresh_row_from_sources(row, playsport_text_cache=None):
     next_row = dict(row)
     changed = False
 
-    try:
-        event = find_event_by_game_id(league, date_key, game_id)
-    except Exception:
-        event = None
-
+    event, event_reason = find_event_smart(league, date_key, game_id, away_team, home_team)
     if event:
         final_score = extract_final_score_from_event(event)
         market = extract_market_from_event(event)
@@ -709,24 +776,12 @@ def refresh_row_from_sources(row, playsport_text_cache=None):
 
         if changed:
             next_row["更新時間"] = now_taipei_iso()
-            return next_row, True, "espn_updated"
+            return next_row, True, event_reason
+        return next_row, False, f"{event_reason}_no_change"
 
-    try:
-        if playsport_text_cache is None:
-            playsport_text_cache = fetch_text(playsport_result_url(league))
-        ps = find_playsport_match(league, away_team, home_team, playsport_text_cache)
-    except Exception:
-        ps = None
-
+    # playsport 僅輔助，不當唯一比分來源
+    ps, ps_reason = find_playsport_match(league, away_team, home_team)
     if ps:
-        if ps.get("final_score"):
-            norm = normalize_score_text(ps["final_score"])
-            score_pair = parse_final_score(norm)
-            if not is_invalid_placeholder_score(score_pair):
-                if clean_str(next_row.get("最終比分")) != clean_str(norm):
-                    next_row["最終比分"] = norm
-                    changed = True
-
         if ps.get("spread_line") is not None:
             new_spread = fmt_num_for_sheet(ps["spread_line"])
             if clean_str(next_row.get("讓分盤")) != new_spread:
@@ -739,10 +794,18 @@ def refresh_row_from_sources(row, playsport_text_cache=None):
                 next_row["大小分盤"] = new_total
                 changed = True
 
+        if ps.get("final_score"):
+            norm = normalize_score_text(ps["final_score"])
+            score_pair = parse_final_score(norm)
+            if not is_invalid_placeholder_score(score_pair):
+                if clean_str(next_row.get("最終比分")) != clean_str(norm):
+                    next_row["最終比分"] = norm
+                    changed = True
+
         if changed:
             next_row["更新時間"] = now_taipei_iso()
-            return next_row, True, "playsport_updated"
-        return next_row, False, "playsport_no_change"
+            return next_row, True, ps_reason
+        return next_row, False, f"{ps_reason}_no_change"
 
     return next_row, False, "event_not_found"
 
@@ -943,16 +1006,9 @@ def refresh_events():
         updated = 0
         details = []
 
-        playsport_text_cache = None
-        if league in LEAGUE_CONFIG:
-            try:
-                playsport_text_cache = fetch_text(playsport_result_url(league))
-            except Exception:
-                playsport_text_cache = None
-
         for idx, row in enumerate(rows, start=2):
             checked += 1
-            next_row, changed, reason = refresh_row_from_sources(row, playsport_text_cache=playsport_text_cache)
+            next_row, changed, reason = refresh_row_from_sources(row)
 
             if changed:
                 write_row = build_row_from_header(next_row, header)
