@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import traceback
 from datetime import datetime, timezone, timedelta
 
@@ -75,13 +76,74 @@ PICK_RESULT_PAIRS = [
 RESULT_KEYS = [result_key for _, result_key in PICK_RESULT_PAIRS]
 
 LEAGUE_CONFIG = {
-    "NBA": {
-        "sport": "basketball",
-        "league": "nba",
-    },
+    "NBA": {"sport": "basketball", "league": "nba", "playsport_allianceid": "4"},
+    "MLB": {"sport": "baseball", "league": "mlb", "playsport_allianceid": "1"},
+}
+
+TEAM_ALIASES = {
     "MLB": {
-        "sport": "baseball",
-        "league": "mlb",
+        "亞利桑那響尾蛇": ["響尾蛇", "亞利桑那響尾蛇", "Diamondbacks", "D-backs"],
+        "運動家": ["運動家", "Athletics", "A's"],
+        "亞特蘭大勇士": ["勇士", "亞特蘭大勇士", "Braves"],
+        "巴爾的摩金鶯": ["金鶯", "巴爾的摩金鶯", "Orioles"],
+        "波士頓紅襪": ["紅襪", "波士頓紅襪", "Red Sox"],
+        "芝加哥小熊": ["小熊", "芝加哥小熊", "Cubs"],
+        "芝加哥白襪": ["白襪", "芝加哥白襪", "White Sox"],
+        "辛辛那提紅人": ["紅人", "辛辛那提紅人", "Reds"],
+        "克里夫蘭守護者": ["守護者", "克里夫蘭守護者", "Guardians"],
+        "科羅拉多落磯": ["落磯", "科羅拉多落磯", "Rockies"],
+        "底特律老虎": ["老虎", "底特律老虎", "Tigers"],
+        "休士頓太空人": ["太空人", "休士頓太空人", "Astros"],
+        "堪薩斯市皇家": ["皇家", "堪薩斯市皇家", "Royals"],
+        "洛杉磯天使": ["天使", "洛杉磯天使", "Angels"],
+        "洛杉磯道奇": ["道奇", "洛杉磯道奇", "Dodgers"],
+        "邁阿密馬林魚": ["馬林魚", "邁阿密馬林魚", "Marlins"],
+        "密爾瓦基釀酒人": ["釀酒人", "密爾瓦基釀酒人", "Brewers"],
+        "明尼蘇達雙城": ["雙城", "明尼蘇達雙城", "Twins"],
+        "紐約大都會": ["大都會", "紐約大都會", "Mets"],
+        "紐約洋基": ["洋基", "紐約洋基", "Yankees"],
+        "費城費城人": ["費城人", "費城費城人", "Phillies"],
+        "匹茲堡海盜": ["海盜", "匹茲堡海盜", "Pirates"],
+        "聖地牙哥教士": ["教士", "聖地牙哥教士", "Padres"],
+        "舊金山巨人": ["巨人", "舊金山巨人", "Giants"],
+        "西雅圖水手": ["水手", "西雅圖水手", "Mariners"],
+        "聖路易紅雀": ["紅雀", "聖路易紅雀", "Cardinals"],
+        "坦帕灣光芒": ["光芒", "坦帕灣光芒", "Rays"],
+        "德州遊騎兵": ["遊騎兵", "德州遊騎兵", "Rangers"],
+        "多倫多藍鳥": ["藍鳥", "多倫多藍鳥", "Blue Jays"],
+        "華盛頓國民": ["國民", "華盛頓國民", "Nationals"],
+    },
+    "NBA": {
+        "亞特蘭大老鷹": ["老鷹", "亞特蘭大老鷹", "Hawks"],
+        "波士頓塞爾提克": ["塞爾提克", "波士頓塞爾提克", "Celtics"],
+        "布魯克林籃網": ["籃網", "布魯克林籃網", "Nets"],
+        "夏洛特黃蜂": ["黃蜂", "夏洛特黃蜂", "Hornets"],
+        "芝加哥公牛": ["公牛", "芝加哥公牛", "Bulls"],
+        "克里夫蘭騎士": ["騎士", "克里夫蘭騎士", "Cavaliers"],
+        "達拉斯獨行俠": ["獨行俠", "達拉斯獨行俠", "Mavericks"],
+        "丹佛金塊": ["金塊", "丹佛金塊", "Nuggets"],
+        "底特律活塞": ["活塞", "底特律活塞", "Pistons"],
+        "金州勇士": ["勇士", "金州勇士", "Warriors"],
+        "休士頓火箭": ["火箭", "休士頓火箭", "Rockets"],
+        "印第安納溜馬": ["溜馬", "印第安納溜馬", "Pacers"],
+        "洛杉磯快艇": ["快艇", "洛杉磯快艇", "Clippers"],
+        "洛杉磯湖人": ["湖人", "洛杉磯湖人", "Lakers"],
+        "曼菲斯灰熊": ["灰熊", "曼菲斯灰熊", "Grizzlies"],
+        "邁阿密熱火": ["熱火", "邁阿密熱火", "Heat"],
+        "密爾瓦基公鹿": ["公鹿", "密爾瓦基公鹿", "Bucks"],
+        "明尼蘇達灰狼": ["灰狼", "明尼蘇達灰狼", "Timberwolves"],
+        "紐奧良鵜鶘": ["鵜鶘", "紐奧良鵜鶘", "Pelicans"],
+        "紐約尼克": ["尼克", "紐約尼克", "Knicks"],
+        "奧克拉荷馬雷霆": ["雷霆", "奧克拉荷馬雷霆", "Thunder"],
+        "奧蘭多魔術": ["魔術", "奧蘭多魔術", "Magic"],
+        "費城76人": ["76人", "費城76人", "Sixers", "76ers"],
+        "鳳凰城太陽": ["太陽", "鳳凰城太陽", "Suns"],
+        "波特蘭拓荒者": ["拓荒者", "波特蘭拓荒者", "Trail Blazers", "Blazers"],
+        "沙加緬度國王": ["國王", "沙加緬度國王", "Kings"],
+        "聖安東尼奧馬刺": ["馬刺", "聖安東尼奧馬刺", "Spurs"],
+        "多倫多暴龍": ["暴龍", "多倫多暴龍", "Raptors"],
+        "猶他爵士": ["爵士", "猶他爵士", "Jazz"],
+        "華盛頓巫師": ["巫師", "華盛頓巫師", "Wizards"],
     },
 }
 
@@ -152,103 +214,12 @@ def is_invalid_placeholder_score(score_pair):
     return False
 
 
-def get_gspread_client():
-    global _GC
-
-    if _GC is not None:
-        return _GC
-
-    if not GOOGLE_SERVICE_ACCOUNT_JSON:
-        raise RuntimeError("Missing GOOGLE_SERVICE_ACCOUNT_JSON")
-
-    info = json.loads(GOOGLE_SERVICE_ACCOUNT_JSON)
-    creds = Credentials.from_service_account_info(info, scopes=SCOPES)
-    _GC = gspread.authorize(creds)
-    return _GC
-
-
-def get_spreadsheet():
-    global _SHEET
-
-    if _SHEET is not None:
-        return _SHEET
-
-    if not SPREADSHEET_ID:
-        raise RuntimeError("Missing SPREADSHEET_ID")
-
-    gc = get_gspread_client()
-    _SHEET = gc.open_by_key(SPREADSHEET_ID)
-    return _SHEET
-
-
-def list_worksheets():
-    return get_spreadsheet().worksheets()
-
-
-def get_worksheet_by_name(title):
-    key = clean_str(title)
-    if not key:
-        raise RuntimeError("Worksheet title is empty")
-
-    if key in _WS_CACHE:
-        return _WS_CACHE[key]
-
-    sh = get_spreadsheet()
-
-    try:
-        ws = sh.worksheet(key)
-    except gspread.WorksheetNotFound:
-        ws = sh.add_worksheet(title=key, rows=5000, cols=160)
-
-    _WS_CACHE[key] = ws
-    return ws
-
-
-def read_header(ws):
-    first_row = ws.row_values(1)
-    return [clean_str(h) for h in first_row if clean_str(h)]
-
-
-def get_header(ws, force_refresh=False):
-    key = ws.title
-    if not force_refresh and key in _HEADER_CACHE:
-        return _HEADER_CACHE[key]
-
-    header = read_header(ws)
-    _HEADER_CACHE[key] = header
-    return header
-
-
-def set_header(ws, header):
-    cleaned = [clean_str(h) for h in (header or []) if clean_str(h)]
-    if not cleaned:
-        return
-    ws.update("1:1", [cleaned])
-    _HEADER_CACHE[ws.title] = cleaned
-
-
-def find_first_non_empty_header(exclude_titles=None):
-    exclude_titles = set(exclude_titles or [])
-    for ws in list_worksheets():
-        if ws.title in exclude_titles:
-            continue
-        header = get_header(ws, force_refresh=True)
-        if header:
-            return ws, header
-    return None, []
-
-
-def get_template_header():
-    template_ws = get_worksheet_by_name(WORKSHEET_NAME)
-    header = get_header(template_ws, force_refresh=True)
-    if header:
-        return template_ws, header
-
-    fallback_ws, fallback_header = find_first_non_empty_header(exclude_titles={template_ws.title})
-    if fallback_header:
-        return fallback_ws, fallback_header
-
-    return template_ws, DEFAULT_HEADERS[:]
+def normalize_date_to_yyyymmdd(value):
+    s = clean_str(value)
+    if not s:
+        return ""
+    s = s.replace("-", "").replace("/", "")
+    return s[:8]
 
 
 def alias_value(data, col_name):
@@ -282,7 +253,6 @@ def alias_value(data, col_name):
 def get_target_worksheet_name(data):
     league = clean_str(alias_value(data, "聯盟")).upper()
     season = clean_str(alias_value(data, "賽季"))
-
     if league and season:
         return f"{league}_{season}"
     if season:
@@ -293,7 +263,6 @@ def get_target_worksheet_name(data):
 def worksheet_name_from_query():
     league = clean_str(request.args.get("league")).upper()
     season = clean_str(request.args.get("season"))
-
     if league and season:
         return f"{league}_{season}"
     if season:
@@ -301,14 +270,98 @@ def worksheet_name_from_query():
     return WORKSHEET_NAME
 
 
+def get_gspread_client():
+    global _GC
+    if _GC is not None:
+        return _GC
+    if not GOOGLE_SERVICE_ACCOUNT_JSON:
+        raise RuntimeError("Missing GOOGLE_SERVICE_ACCOUNT_JSON")
+    info = json.loads(GOOGLE_SERVICE_ACCOUNT_JSON)
+    creds = Credentials.from_service_account_info(info, scopes=SCOPES)
+    _GC = gspread.authorize(creds)
+    return _GC
+
+
+def get_spreadsheet():
+    global _SHEET
+    if _SHEET is not None:
+        return _SHEET
+    if not SPREADSHEET_ID:
+        raise RuntimeError("Missing SPREADSHEET_ID")
+    gc = get_gspread_client()
+    _SHEET = gc.open_by_key(SPREADSHEET_ID)
+    return _SHEET
+
+
+def list_worksheets():
+    return get_spreadsheet().worksheets()
+
+
+def get_worksheet_by_name(title):
+    key = clean_str(title)
+    if not key:
+        raise RuntimeError("Worksheet title is empty")
+    if key in _WS_CACHE:
+        return _WS_CACHE[key]
+    sh = get_spreadsheet()
+    try:
+        ws = sh.worksheet(key)
+    except gspread.WorksheetNotFound:
+        ws = sh.add_worksheet(title=key, rows=5000, cols=160)
+    _WS_CACHE[key] = ws
+    return ws
+
+
+def read_header(ws):
+    first_row = ws.row_values(1)
+    return [clean_str(h) for h in first_row if clean_str(h)]
+
+
+def get_header(ws, force_refresh=False):
+    key = ws.title
+    if not force_refresh and key in _HEADER_CACHE:
+        return _HEADER_CACHE[key]
+    header = read_header(ws)
+    _HEADER_CACHE[key] = header
+    return header
+
+
+def set_header(ws, header):
+    cleaned = [clean_str(h) for h in (header or []) if clean_str(h)]
+    if not cleaned:
+        return
+    ws.update("1:1", [cleaned])
+    _HEADER_CACHE[ws.title] = cleaned
+
+
+def find_first_non_empty_header(exclude_titles=None):
+    exclude_titles = set(exclude_titles or [])
+    for ws in list_worksheets():
+        if ws.title in exclude_titles:
+            continue
+        header = get_header(ws, force_refresh=True)
+        if header:
+            return ws, header
+    return None, []
+
+
+def get_template_header():
+    template_ws = get_worksheet_by_name(WORKSHEET_NAME)
+    header = get_header(template_ws, force_refresh=True)
+    if header:
+        return template_ws, header
+    fallback_ws, fallback_header = find_first_non_empty_header(exclude_titles={template_ws.title})
+    if fallback_header:
+        return fallback_ws, fallback_header
+    return template_ws, DEFAULT_HEADERS[:]
+
+
 def ensure_target_worksheet_with_header(data):
     target_title = get_target_worksheet_name(data)
     ws = get_worksheet_by_name(target_title)
     header = get_header(ws, force_refresh=True)
-
     if header:
         return ws, header, None
-
     source_ws, template_header = get_template_header()
     set_header(ws, template_header)
     return ws, template_header, source_ws.title
@@ -337,7 +390,6 @@ def get_all_records_safe(ws, header):
     rows = ws.get_all_values()
     if len(rows) <= 1:
         return []
-
     width = len(header)
     out = []
     for row in rows[1:]:
@@ -351,12 +403,10 @@ def find_row_by_game_id(ws, header, game_id):
     gid = clean_str(game_id)
     if not gid:
         return None
-
     try:
         col_idx = header.index("比賽ID") + 1
     except ValueError:
         return None
-
     values = ws.col_values(col_idx)
     for i in range(2, len(values) + 1):
         if clean_str(values[i - 1]) == gid:
@@ -369,10 +419,7 @@ def merge_payload_with_existing(existing_row, payload, header):
     for col in header:
         old_val = existing_row.get(col, "")
         new_val = alias_value(payload, col)
-        if clean_str(new_val) != "":
-            merged[col] = new_val
-        else:
-            merged[col] = old_val
+        merged[col] = new_val if clean_str(new_val) != "" else old_val
     return merged
 
 
@@ -382,87 +429,24 @@ def parse_limit(default_value=5000, max_value=20000):
         n = int(raw)
     except Exception:
         n = default_value
-    if n < 1:
-        n = 1
-    if n > max_value:
-        n = max_value
-    return n
+    return max(1, min(n, max_value))
 
 
-def judge_pick_result(row, pick_key):
-    pick = clean_str(row.get(pick_key))
-    if not pick or pick == "PASS":
-        return ""
-
-    final_score = parse_final_score(row.get("最終比分"))
-    if not final_score:
-        return ""
-
-    away_score, home_score = final_score
-
-    if is_invalid_placeholder_score(final_score):
-        return ""
-
-    away_team = clean_str(row.get("客隊"))
-    home_team = clean_str(row.get("主隊"))
-
-    total = away_score + home_score
-    total_line = to_float(row.get("大小分盤"))
-    spread_line = to_float(row.get("讓分盤"))
-
-    if pick == "大分":
-        if total_line is None:
-            return ""
-        if total > total_line:
-            return "WIN"
-        if total < total_line:
-            return "LOSE"
-        return "PUSH"
-
-    if pick == "小分":
-        if total_line is None:
-            return ""
-        if total < total_line:
-            return "WIN"
-        if total > total_line:
-            return "LOSE"
-        return "PUSH"
-
-    is_give = pick.endswith("讓分")
-    is_take = pick.endswith("受讓")
-    if not (is_give or is_take):
-        return ""
-
-    if spread_line is None:
-        return ""
-
-    team_name = pick.replace("讓分", "").replace("受讓", "").strip()
-
-    if team_name == away_team:
-        diff = away_score - home_score
-    elif team_name == home_team:
-        diff = home_score - away_score
-    else:
-        return ""
-
-    adj = diff - spread_line if is_give else diff + spread_line
-
-    if adj > 0:
-        return "WIN"
-    if adj < 0:
-        return "LOSE"
-    return "PUSH"
-
-
-def build_stats_rows(rows):
-    return rows
-
-
-def normalize_date_to_yyyymmdd(value):
-    s = clean_str(value)
+def normalize_name_for_match(name):
+    s = clean_str(name)
     if not s:
         return ""
-    return s.replace("-", "").replace("/", "")[:8]
+    return re.sub(r"\s+", "", s).lower()
+
+
+def team_alias_hit(league, sheet_name, page_name):
+    aliases = TEAM_ALIASES.get(league.upper(), {})
+    names = aliases.get(sheet_name, [sheet_name])
+    page_norm = normalize_name_for_match(page_name)
+    for n in names:
+        if normalize_name_for_match(n) == page_norm:
+            return True
+    return False
 
 
 def espn_scoreboard_url(league_name, yyyymmdd):
@@ -472,8 +456,25 @@ def espn_scoreboard_url(league_name, yyyymmdd):
     return f"https://site.api.espn.com/apis/site/v2/sports/{conf['sport']}/{conf['league']}/scoreboard?dates={yyyymmdd}"
 
 
+def playsport_result_url(league_name):
+    conf = LEAGUE_CONFIG.get(league_name.upper())
+    if not conf:
+        raise RuntimeError(f"Unsupported league: {league_name}")
+    return f"https://www.playsport.cc/gamesData/result?allianceid={conf['playsport_allianceid']}"
+
+
+def fetch_text(url):
+    r = requests.get(url, timeout=REQUEST_TIMEOUT, headers={
+        "User-Agent": "Mozilla/5.0"
+    })
+    r.raise_for_status()
+    return r.text
+
+
 def fetch_json(url):
-    r = requests.get(url, timeout=REQUEST_TIMEOUT)
+    r = requests.get(url, timeout=REQUEST_TIMEOUT, headers={
+        "User-Agent": "Mozilla/5.0"
+    })
     r.raise_for_status()
     return r.json()
 
@@ -505,7 +506,7 @@ def extract_market_from_event(event):
 
     def team_side_spread(odds, competitor):
         side = competitor.get("homeAway")
-        side_odds = None
+        side_odds = {}
         if side == "away":
             side_odds = odds.get("awayTeamOdds") or {}
         elif side == "home":
@@ -527,13 +528,10 @@ def extract_market_from_event(event):
                 odds.get("totalPoints"),
                 odds.get("overUnderLine"),
             )
-
         if left_spread is None:
             left_spread = team_side_spread(odds, away_comp)
-
         if right_spread is None:
             right_spread = team_side_spread(odds, home_comp)
-
         if total is not None and left_spread is not None and right_spread is not None:
             break
 
@@ -542,16 +540,9 @@ def extract_market_from_event(event):
     if right_spread is None and left_spread is not None:
         right_spread = -left_spread
 
-    favorite_abs = None
+    spread_line = None
     if left_spread is not None and right_spread is not None:
-        if left_spread < right_spread:
-            favorite_abs = abs(left_spread)
-        elif right_spread < left_spread:
-            favorite_abs = abs(right_spread)
-        elif left_spread < 0:
-            favorite_abs = abs(left_spread)
-
-    spread_line = favorite_abs
+        spread_line = abs(left_spread) if abs(left_spread) <= abs(right_spread) else abs(right_spread)
 
     return {
         "spread_line": spread_line,
@@ -563,25 +554,19 @@ def extract_final_score_from_event(event):
     comp = ((event or {}).get("competitions") or [{}])[0]
     competitors = (comp.get("competitors") or [])[:]
     competitors.sort(key=lambda x: 0 if x.get("homeAway") == "away" else 1)
-
     if len(competitors) < 2:
         return ""
-
     away_score = competitors[0].get("score")
     home_score = competitors[1].get("score")
-
     try:
         away_score = int(str(away_score))
         home_score = int(str(home_score))
     except Exception:
         return ""
-
     status = (((event or {}).get("status") or {}).get("type") or {})
     completed = bool(status.get("completed"))
-
     if not completed and away_score == 0 and home_score == 0:
         return ""
-
     return f"{away_score}:{home_score}"
 
 
@@ -595,57 +580,232 @@ def find_event_by_game_id(league_name, date_yyyymmdd, game_id):
     return None
 
 
-def refresh_row_from_event(row):
+def extract_playsport_blocks(html):
+    blocks = []
+    pattern = re.compile(r"###\s+(\d+)(.*?)(?=\nL?###\s+\d+|\Z)", re.S)
+    # fallback for raw html/text parse below; use simpler segmentation on "### "
+    parts = re.split(r"\n###\s+", html)
+    for part in parts[1:]:
+        text = "### " + part
+        blocks.append(text)
+    return blocks
+
+
+def parse_playsport_candidate_blocks(page_text, league):
+    blocks = extract_playsport_blocks(page_text)
+    out = []
+    for block in blocks:
+        score_match = re.search(r"\*\s*(\d+)\s*\n\s*\*\s*V\.S\.\s*\n\s*\*\s*(\d+)", block)
+        away_score = None
+        home_score = None
+        if score_match:
+            away_score = int(score_match.group(1))
+            home_score = int(score_match.group(2))
+
+        team_names = re.findall(r"【\d+†([^】]+)】", block)
+        if len(team_names) >= 2:
+            away_name = clean_str(team_names[-2])
+            home_name = clean_str(team_names[-1])
+        else:
+            continue
+
+        spread_candidates = re.findall(r"[客主][+-]1\.5[,，]?\s*[\d.]+", block)
+        total_candidates = re.findall(r"[大小]\s*([\d.]+)[贏輸]?\s*50%?", block)
+        total_line = None
+        if total_candidates:
+            try:
+                total_line = float(total_candidates[0])
+            except Exception:
+                total_line = None
+
+        spread_line = None
+        spread_abs = re.search(r"[客主][+-]([0-9.]+)", " ".join(spread_candidates))
+        if spread_abs:
+            try:
+                spread_line = float(spread_abs.group(1))
+            except Exception:
+                spread_line = None
+
+        out.append({
+            "away_name": away_name,
+            "home_name": home_name,
+            "final_score": f"{away_score}:{home_score}" if away_score is not None and home_score is not None else "",
+            "spread_line": spread_line,
+            "total_line": total_line,
+            "raw_block": block[:800],
+        })
+    return out
+
+
+def find_playsport_match(league, away_team, home_team, page_text):
+    candidates = parse_playsport_candidate_blocks(page_text, league)
+    for item in candidates:
+        if team_alias_hit(league, away_team, item["away_name"]) and team_alias_hit(league, home_team, item["home_name"]):
+            return item
+    return None
+
+
+def fmt_num_for_sheet(v):
+    if v is None:
+        return ""
+    if float(v).is_integer():
+        return str(int(v))
+    return str(v).rstrip("0").rstrip(".")
+
+
+def refresh_row_from_sources(row, playsport_text_cache=None):
     league = clean_str(row.get("聯盟")).upper()
     game_id = clean_str(row.get("比賽ID"))
     date_key = normalize_date_to_yyyymmdd(row.get("比賽日期"))
+    away_team = clean_str(row.get("客隊"))
+    home_team = clean_str(row.get("主隊"))
 
     if not league or not game_id or not date_key:
         return row, False, "missing_key"
 
-    event = find_event_by_game_id(league, date_key, game_id)
-    if not event:
-        return row, False, "event_not_found"
-
     next_row = dict(row)
     changed = False
 
-    final_score = extract_final_score_from_event(event)
-    market = extract_market_from_event(event)
+    # 1) ESPN by game id
+    try:
+        event = find_event_by_game_id(league, date_key, game_id)
+    except Exception:
+        event = None
 
-    if final_score:
-        normalized = normalize_score_text(final_score)
-        if clean_str(next_row.get("最終比分")) != clean_str(normalized):
-            next_row["最終比分"] = normalized
-            changed = True
+    if event:
+        final_score = extract_final_score_from_event(event)
+        market = extract_market_from_event(event)
 
-    spread_line = market.get("spread_line")
-    if spread_line is not None:
-        spread_text = str(spread_line).rstrip("0").rstrip(".") if isinstance(spread_line, float) else str(spread_line)
-        if clean_str(next_row.get("讓分盤")) != clean_str(spread_text):
-            next_row["讓分盤"] = spread_text
-            changed = True
+        if final_score:
+            norm = normalize_score_text(final_score)
+            if clean_str(next_row.get("最終比分")) != clean_str(norm):
+                next_row["最終比分"] = norm
+                changed = True
 
-    total_line = market.get("total_line")
-    if total_line is not None:
-        total_text = str(total_line).rstrip("0").rstrip(".") if isinstance(total_line, float) else str(total_line)
-        if clean_str(next_row.get("大小分盤")) != clean_str(total_text):
-            next_row["大小分盤"] = total_text
-            changed = True
+        if market.get("spread_line") is not None:
+            new_spread = fmt_num_for_sheet(market["spread_line"])
+            if clean_str(next_row.get("讓分盤")) != new_spread:
+                next_row["讓分盤"] = new_spread
+                changed = True
 
-    if changed:
-        next_row["更新時間"] = now_taipei_iso()
+        if market.get("total_line") is not None:
+            new_total = fmt_num_for_sheet(market["total_line"])
+            if clean_str(next_row.get("大小分盤")) != new_total:
+                next_row["大小分盤"] = new_total
+                changed = True
 
-    return next_row, changed, "ok"
+        if changed:
+            next_row["更新時間"] = now_taipei_iso()
+            return next_row, True, "espn_updated"
+
+    # 2) playsport by team names
+    try:
+        if playsport_text_cache is None:
+            playsport_text_cache = fetch_text(playsport_result_url(league))
+        ps = find_playsport_match(league, away_team, home_team, playsport_text_cache)
+    except Exception:
+        ps = None
+
+    if ps:
+        if ps.get("final_score"):
+            norm = normalize_score_text(ps["final_score"])
+            score_pair = parse_final_score(norm)
+            if not is_invalid_placeholder_score(score_pair):
+                if clean_str(next_row.get("最終比分")) != clean_str(norm):
+                    next_row["最終比分"] = norm
+                    changed = True
+
+        if ps.get("spread_line") is not None:
+            new_spread = fmt_num_for_sheet(ps["spread_line"])
+            if clean_str(next_row.get("讓分盤")) != new_spread:
+                next_row["讓分盤"] = new_spread
+                changed = True
+
+        if ps.get("total_line") is not None:
+            new_total = fmt_num_for_sheet(ps["total_line"])
+            if clean_str(next_row.get("大小分盤")) != new_total:
+                next_row["大小分盤"] = new_total
+                changed = True
+
+        if changed:
+            next_row["更新時間"] = now_taipei_iso()
+            return next_row, True, "playsport_updated"
+        return next_row, False, "playsport_no_change"
+
+    return next_row, False, "event_not_found"
+
+
+def judge_pick_result(row, pick_key):
+    pick = clean_str(row.get(pick_key))
+    if not pick or pick == "PASS":
+        return ""
+    final_score = parse_final_score(row.get("最終比分"))
+    if not final_score or is_invalid_placeholder_score(final_score):
+        return ""
+    away_score, home_score = final_score
+    away_team = clean_str(row.get("客隊"))
+    home_team = clean_str(row.get("主隊"))
+    total = away_score + home_score
+    total_line = to_float(row.get("大小分盤"))
+    spread_line = to_float(row.get("讓分盤"))
+
+    if pick == "大分":
+        if total_line is None:
+            return ""
+        return "WIN" if total > total_line else ("LOSE" if total < total_line else "PUSH")
+
+    if pick == "小分":
+        if total_line is None:
+            return ""
+        return "WIN" if total < total_line else ("LOSE" if total > total_line else "PUSH")
+
+    is_give = pick.endswith("讓分")
+    is_take = pick.endswith("受讓")
+    if not (is_give or is_take) or spread_line is None:
+        return ""
+
+    team_name = pick.replace("讓分", "").replace("受讓", "").strip()
+    if team_name == away_team:
+        diff = away_score - home_score
+    elif team_name == home_team:
+        diff = home_score - away_score
+    else:
+        return ""
+
+    adj = diff - spread_line if is_give else diff + spread_line
+    return "WIN" if adj > 0 else ("LOSE" if adj < 0 else "PUSH")
+
+
+def unfilled_reason(row):
+    final_score = parse_final_score(row.get("最終比分"))
+    if not final_score:
+        return "missing_score"
+    if is_invalid_placeholder_score(final_score):
+        return "score_is_0_0"
+
+    has_any_unfilled = False
+    for pick_key, result_key in PICK_RESULT_PAIRS:
+        pick = clean_str(row.get(pick_key))
+        result = clean_str(row.get(result_key))
+        if pick and pick != "PASS" and not result:
+            has_any_unfilled = True
+            if pick in ("大分", "小分") and to_float(row.get("大小分盤")) is None:
+                return "missing_total_line"
+            if (pick.endswith("讓分") or pick.endswith("受讓")) and to_float(row.get("讓分盤")) is None:
+                return "missing_spread_line"
+            judged = judge_pick_result(row, pick_key)
+            if not judged:
+                return "cannot_judge"
+    return "filled_or_pass" if not has_any_unfilled else "ready_to_backfill"
+
+
+def build_stats_rows(rows):
+    return rows
 
 
 @app.route("/", methods=["GET"])
 def index():
-    return jsonify({
-        "ok": True,
-        "service": "nba-mlb-cloud",
-        "message": "running",
-    }), 200
+    return jsonify({"ok": True, "service": "nba-mlb-cloud", "message": "running"}), 200
 
 
 @app.route("/health", methods=["GET"])
@@ -653,13 +813,11 @@ def health():
     try:
         template_ws = get_worksheet_by_name(WORKSHEET_NAME)
         template_header = get_header(template_ws, force_refresh=True)
-
         fallback_ws = None
         fallback_header_count = 0
         if not template_header:
             fallback_ws, fallback_header = find_first_non_empty_header(exclude_titles={template_ws.title})
             fallback_header_count = len(fallback_header)
-
         return jsonify({
             "ok": True,
             "spreadsheet_id": SPREADSHEET_ID,
@@ -670,11 +828,7 @@ def health():
             "worksheets": [ws.title for ws in list_worksheets()],
         }), 200
     except Exception as e:
-        return jsonify({
-            "ok": False,
-            "error": str(e),
-            "type": e.__class__.__name__,
-        }), 500
+        return jsonify({"ok": False, "error": str(e), "type": e.__class__.__name__}), 500
 
 
 @app.route("/results", methods=["GET"])
@@ -683,19 +837,11 @@ def results():
         ws_name = worksheet_name_from_query()
         ws = get_worksheet_by_name(ws_name)
         header = get_header(ws, force_refresh=True)
-
         if not header:
             return jsonify({"ok": True, "rows": [], "worksheet": ws.title, "count": 0}), 200
-
         rows = get_all_records_safe(ws, header)
         rows = list(reversed(rows))[:parse_limit()]
-
-        return jsonify({
-            "ok": True,
-            "rows": rows,
-            "worksheet": ws.title,
-            "count": len(rows),
-        }), 200
+        return jsonify({"ok": True, "rows": rows, "worksheet": ws.title, "count": len(rows)}), 200
     except Exception as e:
         traceback.print_exc()
         return jsonify({"ok": False, "error": str(e), "type": e.__class__.__name__}), 500
@@ -707,19 +853,11 @@ def stats():
         ws_name = worksheet_name_from_query()
         ws = get_worksheet_by_name(ws_name)
         header = get_header(ws, force_refresh=True)
-
         if not header:
             return jsonify({"ok": True, "rows": [], "worksheet": ws.title, "count": 0}), 200
-
         rows = get_all_records_safe(ws, header)
         rows = list(reversed(rows))[:parse_limit()]
-
-        return jsonify({
-            "ok": True,
-            "rows": build_stats_rows(rows),
-            "worksheet": ws.title,
-            "count": len(rows),
-        }), 200
+        return jsonify({"ok": True, "rows": build_stats_rows(rows), "worksheet": ws.title, "count": len(rows)}), 200
     except Exception as e:
         traceback.print_exc()
         return jsonify({"ok": False, "error": str(e), "type": e.__class__.__name__}), 500
@@ -729,12 +867,10 @@ def stats():
 def save_result():
     if request.method == "OPTIONS":
         return ("", 204)
-
     try:
         data = request.get_json(force=True, silent=True) or {}
         if not isinstance(data, dict):
             return jsonify({"ok": False, "error": "Invalid JSON payload"}), 400
-
         game_id = clean_str(alias_value(data, "比賽ID"))
         if not game_id:
             return jsonify({"ok": False, "error": "Missing 比賽ID"}), 400
@@ -767,7 +903,65 @@ def save_result():
             "league": clean_str(alias_value(data, "聯盟")),
             "season": clean_str(alias_value(data, "賽季")),
         }), 200
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"ok": False, "error": str(e), "type": e.__class__.__name__}), 500
 
+
+@app.route("/refresh_events", methods=["GET", "POST"])
+def refresh_events():
+    try:
+        payload = request.get_json(silent=True) if request.is_json else {}
+        payload = payload or {}
+        league = clean_str(request.args.get("league") or payload.get("league")).upper()
+        season = clean_str(request.args.get("season") or payload.get("season"))
+        ws_name = f"{league}_{season}" if league and season else worksheet_name_from_query()
+        ws = get_worksheet_by_name(ws_name)
+        header = get_header(ws, force_refresh=True)
+
+        if not header:
+            return jsonify({"ok": True, "worksheet": ws.title, "checked": 0, "updated": 0, "details": []}), 200
+
+        rows = get_all_records_safe(ws, header)
+        end_col = col_to_a1(len(header))
+
+        checked = 0
+        updated = 0
+        details = []
+        playsport_text_cache = None
+        if league in LEAGUE_CONFIG:
+            try:
+                playsport_text_cache = fetch_text(playsport_result_url(league))
+            except Exception:
+                playsport_text_cache = None
+
+        for idx, row in enumerate(rows, start=2):
+            checked += 1
+            next_row, changed, reason = refresh_row_from_sources(row, playsport_text_cache=playsport_text_cache)
+            if changed:
+                write_row = build_row_from_header(next_row, header)
+                ws.update(f"A{idx}:{end_col}{idx}", [write_row])
+                updated += 1
+
+            if len(details) < 100:
+                details.append({
+                    "row": idx,
+                    "game_id": clean_str(row.get("比賽ID")),
+                    "reason": reason,
+                    "old_final_score": clean_str(row.get("最終比分")),
+                    "new_final_score": clean_str(next_row.get("最終比分")),
+                    "new_spread_line": clean_str(next_row.get("讓分盤")),
+                    "new_total_line": clean_str(next_row.get("大小分盤")),
+                    "changed": changed,
+                })
+
+        return jsonify({
+            "ok": True,
+            "worksheet": ws.title,
+            "checked": checked,
+            "updated": updated,
+            "details": details,
+        }), 200
     except Exception as e:
         traceback.print_exc()
         return jsonify({"ok": False, "error": str(e), "type": e.__class__.__name__}), 500
@@ -778,35 +972,25 @@ def repair_results():
     try:
         payload = request.get_json(silent=True) if request.is_json else {}
         payload = payload or {}
-
         league = clean_str(request.args.get("league") or payload.get("league")).upper()
         season = clean_str(request.args.get("season") or payload.get("season"))
-
         ws_name = f"{league}_{season}" if league and season else worksheet_name_from_query()
         ws = get_worksheet_by_name(ws_name)
         header = get_header(ws, force_refresh=True)
 
         if not header:
-            return jsonify({
-                "ok": True,
-                "worksheet": ws.title,
-                "repaired": 0,
-                "checked": 0,
-                "message": "empty header",
-            }), 200
+            return jsonify({"ok": True, "worksheet": ws.title, "checked": 0, "repaired": 0, "details": []}), 200
 
         rows = get_all_records_safe(ws, header)
         end_col = col_to_a1(len(header))
-
-        repaired = 0
         checked = 0
+        repaired = 0
         details = []
 
         for idx, row in enumerate(rows, start=2):
             checked += 1
             next_row = dict(row)
             final_score = parse_final_score(next_row.get("最終比分"))
-
             if not is_invalid_placeholder_score(final_score):
                 continue
 
@@ -821,10 +1005,7 @@ def repair_results():
                 write_row = build_row_from_header(next_row, header)
                 ws.update(f"A{idx}:{end_col}{idx}", [write_row])
                 repaired += 1
-                details.append({
-                    "row": idx,
-                    "game_id": clean_str(next_row.get("比賽ID")),
-                })
+                details.append({"row": idx, "game_id": clean_str(next_row.get("比賽ID"))})
 
         return jsonify({
             "ok": True,
@@ -833,66 +1014,6 @@ def repair_results():
             "repaired": repaired,
             "details": details[:100],
         }), 200
-
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({"ok": False, "error": str(e), "type": e.__class__.__name__}), 500
-
-
-@app.route("/refresh_events", methods=["GET", "POST"])
-def refresh_events():
-    try:
-        payload = request.get_json(silent=True) if request.is_json else {}
-        payload = payload or {}
-
-        league = clean_str(request.args.get("league") or payload.get("league")).upper()
-        season = clean_str(request.args.get("season") or payload.get("season"))
-
-        ws_name = f"{league}_{season}" if league and season else worksheet_name_from_query()
-        ws = get_worksheet_by_name(ws_name)
-        header = get_header(ws, force_refresh=True)
-
-        if not header:
-            return jsonify({
-                "ok": True,
-                "worksheet": ws.title,
-                "checked": 0,
-                "updated": 0,
-                "message": "empty header",
-            }), 200
-
-        rows = get_all_records_safe(ws, header)
-        end_col = col_to_a1(len(header))
-
-        checked = 0
-        updated = 0
-        details = []
-
-        for idx, row in enumerate(rows, start=2):
-            checked += 1
-            next_row, changed, reason = refresh_row_from_event(row)
-
-            if changed:
-                write_row = build_row_from_header(next_row, header)
-                ws.update(f"A{idx}:{end_col}{idx}", [write_row])
-                updated += 1
-                details.append({
-                    "row": idx,
-                    "game_id": clean_str(next_row.get("比賽ID")),
-                    "reason": reason,
-                    "final_score": clean_str(next_row.get("最終比分")),
-                    "spread_line": clean_str(next_row.get("讓分盤")),
-                    "total_line": clean_str(next_row.get("大小分盤")),
-                })
-
-        return jsonify({
-            "ok": True,
-            "worksheet": ws.title,
-            "checked": checked,
-            "updated": updated,
-            "details": details[:100],
-        }), 200
-
     except Exception as e:
         traceback.print_exc()
         return jsonify({"ok": False, "error": str(e), "type": e.__class__.__name__}), 500
@@ -903,46 +1024,34 @@ def backfill_results():
     try:
         payload = request.get_json(silent=True) if request.is_json else {}
         payload = payload or {}
-
         league = clean_str(request.args.get("league") or payload.get("league")).upper()
         season = clean_str(request.args.get("season") or payload.get("season"))
-
         ws_name = f"{league}_{season}" if league and season else worksheet_name_from_query()
         ws = get_worksheet_by_name(ws_name)
         header = get_header(ws, force_refresh=True)
 
         if not header:
-            return jsonify({
-                "ok": True,
-                "worksheet": ws.title,
-                "updated": 0,
-                "checked": 0,
-                "message": "empty header",
-            }), 200
+            return jsonify({"ok": True, "worksheet": ws.title, "checked": 0, "updated": 0, "details": []}), 200
 
         rows = get_all_records_safe(ws, header)
         end_col = col_to_a1(len(header))
-
-        updated = 0
         checked = 0
+        updated = 0
         details = []
 
         for idx, row in enumerate(rows, start=2):
             checked += 1
-            changed = False
             next_row = dict(row)
-
             final_score = parse_final_score(next_row.get("最終比分"))
             if is_invalid_placeholder_score(final_score):
                 continue
 
+            changed = False
             for pick_key, result_key in PICK_RESULT_PAIRS:
                 pick = clean_str(next_row.get(pick_key))
                 result = clean_str(next_row.get(result_key))
-
                 if not pick or pick == "PASS" or result:
                     continue
-
                 judged = judge_pick_result(next_row, pick_key)
                 if judged:
                     next_row[result_key] = judged
@@ -953,10 +1062,7 @@ def backfill_results():
                 write_row = build_row_from_header(next_row, header)
                 ws.update(f"A{idx}:{end_col}{idx}", [write_row])
                 updated += 1
-                details.append({
-                    "row": idx,
-                    "game_id": clean_str(next_row.get("比賽ID")),
-                })
+                details.append({"row": idx, "game_id": clean_str(next_row.get("比賽ID"))})
 
         return jsonify({
             "ok": True,
@@ -965,7 +1071,41 @@ def backfill_results():
             "updated": updated,
             "details": details[:100],
         }), 200
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"ok": False, "error": str(e), "type": e.__class__.__name__}), 500
 
+
+@app.route("/debug_unfilled", methods=["GET"])
+def debug_unfilled():
+    try:
+        ws_name = worksheet_name_from_query()
+        ws = get_worksheet_by_name(ws_name)
+        header = get_header(ws, force_refresh=True)
+        if not header:
+            return jsonify({"ok": True, "worksheet": ws.title, "count": 0, "rows": []}), 200
+
+        rows = get_all_records_safe(ws, header)
+        out = []
+        for row in rows:
+            reason = unfilled_reason(row)
+            if reason not in {"filled_or_pass"}:
+                out.append({
+                    "game_id": clean_str(row.get("比賽ID")),
+                    "date": clean_str(row.get("比賽日期")),
+                    "matchup": clean_str(row.get("對戰")),
+                    "final_score": clean_str(row.get("最終比分")),
+                    "spread_line": clean_str(row.get("讓分盤")),
+                    "total_line": clean_str(row.get("大小分盤")),
+                    "reason": reason,
+                })
+
+        return jsonify({
+            "ok": True,
+            "worksheet": ws.title,
+            "count": len(out),
+            "rows": out[:200],
+        }), 200
     except Exception as e:
         traceback.print_exc()
         return jsonify({"ok": False, "error": str(e), "type": e.__class__.__name__}), 500
