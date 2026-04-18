@@ -1,10 +1,13 @@
 import os
 import json
 import traceback
+from datetime import datetime, timezone, timedelta
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import gspread
 from google.oauth2.service_account import Credentials
+
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
@@ -67,6 +70,8 @@ PICK_RESULT_PAIRS = [
     ("EDGE大小推薦", "EDGE大小結果"),
 ]
 
+RESULT_KEYS = [result_key for _, result_key in PICK_RESULT_PAIRS]
+
 
 def safe_str(value):
     if value is None:
@@ -80,6 +85,11 @@ def clean_str(value):
     return safe_str(value).strip()
 
 
+def now_taipei_iso():
+    tz = timezone(timedelta(hours=8))
+    return datetime.now(tz).isoformat(timespec="seconds")
+
+
 def normalize_score_text(value):
     s = clean_str(value)
     if not s:
@@ -87,12 +97,6 @@ def normalize_score_text(value):
     if not s.startswith("'"):
         s = "'" + s
     return s
-
-
-def now_taipei_iso():
-    from datetime import datetime, timezone, timedelta
-    tz = timezone(timedelta(hours=8))
-    return datetime.now(tz).isoformat(timespec="seconds")
 
 
 def to_float(value):
@@ -122,6 +126,17 @@ def parse_final_score(score_text):
         return int(left), int(right)
     except Exception:
         return None
+
+
+def is_invalid_placeholder_score(score_pair):
+    if not score_pair:
+        return True
+    away_score, home_score = score_pair
+    if away_score < 0 or home_score < 0:
+        return True
+    if away_score == 0 and home_score == 0:
+        return True
+    return False
 
 
 def get_gspread_client():
@@ -371,6 +386,11 @@ def judge_pick_result(row, pick_key):
         return ""
 
     away_score, home_score = final_score
+
+    # 0:0 視為無效比分，不判定
+    if is_invalid_placeholder_score(final_score):
+        return ""
+
     away_team = clean_str(row.get("客隊"))
     home_team = clean_str(row.get("主隊"))
 
@@ -563,8 +583,11 @@ def save_result():
 @app.route("/backfill_results", methods=["GET", "POST"])
 def backfill_results():
     try:
-        league = clean_str(request.args.get("league") or request.json.get("league") if request.is_json else request.args.get("league")).upper()
-        season = clean_str(request.args.get("season") or request.json.get("season") if request.is_json else request.args.get("season"))
+        payload = request.get_json(silent=True) if request.is_json else {}
+        payload = payload or {}
+
+        league = clean_str(request.args.get("league") or payload.get("league")).upper()
+        season = clean_str(request.args.get("season") or payload.get("season"))
 
         ws_name = f"{league}_{season}" if league and season else worksheet_name_from_query()
         ws = get_worksheet_by_name(ws_name)
@@ -587,9 +610,14 @@ def backfill_results():
         details = []
 
         for idx, row in enumerate(rows, start=2):
-            changed = False
             checked += 1
+            changed = False
             next_row = dict(row)
+
+            # 0:0 一律跳過，不做回填
+            final_score = parse_final_score(next_row.get("最終比分"))
+            if is_invalid_placeholder_score(final_score):
+                continue
 
             for pick_key, result_key in PICK_RESULT_PAIRS:
                 pick = clean_str(next_row.get(pick_key))
@@ -618,6 +646,73 @@ def backfill_results():
             "worksheet": ws.title,
             "checked": checked,
             "updated": updated,
+            "details": details[:100],
+        }), 200
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"ok": False, "error": str(e), "type": e.__class__.__name__}), 500
+
+
+@app.route("/repair_results", methods=["GET", "POST"])
+def repair_results():
+    try:
+        payload = request.get_json(silent=True) if request.is_json else {}
+        payload = payload or {}
+
+        league = clean_str(request.args.get("league") or payload.get("league")).upper()
+        season = clean_str(request.args.get("season") or payload.get("season"))
+
+        ws_name = f"{league}_{season}" if league and season else worksheet_name_from_query()
+        ws = get_worksheet_by_name(ws_name)
+        header = get_header(ws, force_refresh=True)
+
+        if not header:
+            return jsonify({
+                "ok": True,
+                "worksheet": ws.title,
+                "repaired": 0,
+                "checked": 0,
+                "message": "empty header",
+            }), 200
+
+        rows = get_all_records_safe(ws, header)
+        end_col = col_to_a1(len(header))
+
+        repaired = 0
+        checked = 0
+        details = []
+
+        for idx, row in enumerate(rows, start=2):
+            checked += 1
+            next_row = dict(row)
+            final_score = parse_final_score(next_row.get("最終比分"))
+
+            # 只修 0:0 / 無效比分，但已有結果值的列
+            if not is_invalid_placeholder_score(final_score):
+                continue
+
+            changed = False
+            for result_key in RESULT_KEYS:
+                if clean_str(next_row.get(result_key)):
+                    next_row[result_key] = ""
+                    changed = True
+
+            if changed:
+                next_row["更新時間"] = now_taipei_iso()
+                write_row = build_row_from_header(next_row, header)
+                ws.update(f"A{idx}:{end_col}{idx}", [write_row])
+                repaired += 1
+                details.append({
+                    "row": idx,
+                    "game_id": clean_str(next_row.get("比賽ID")),
+                })
+
+        return jsonify({
+            "ok": True,
+            "worksheet": ws.title,
+            "checked": checked,
+            "repaired": repaired,
             "details": details[:100],
         }), 200
 
