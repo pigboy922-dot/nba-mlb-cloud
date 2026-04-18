@@ -436,7 +436,7 @@ def normalize_name_for_match(name):
     s = clean_str(name)
     if not s:
         return ""
-    return re.sub(r"\s+", "", s).lower()
+    return re.sub(r"[\s\-\.·']", "", s).lower()
 
 
 def team_alias_hit(league, sheet_name, page_name):
@@ -447,6 +447,12 @@ def team_alias_hit(league, sheet_name, page_name):
         if normalize_name_for_match(n) == page_norm:
             return True
     return False
+
+
+def team_pair_match(league, away_sheet, home_sheet, away_page, home_page):
+    normal = team_alias_hit(league, away_sheet, away_page) and team_alias_hit(league, home_sheet, home_page)
+    swapped = team_alias_hit(league, away_sheet, home_page) and team_alias_hit(league, home_sheet, away_page)
+    return normal or swapped
 
 
 def espn_scoreboard_url(league_name, yyyymmdd):
@@ -464,17 +470,13 @@ def playsport_result_url(league_name):
 
 
 def fetch_text(url):
-    r = requests.get(url, timeout=REQUEST_TIMEOUT, headers={
-        "User-Agent": "Mozilla/5.0"
-    })
+    r = requests.get(url, timeout=REQUEST_TIMEOUT, headers={"User-Agent": "Mozilla/5.0"})
     r.raise_for_status()
     return r.text
 
 
 def fetch_json(url):
-    r = requests.get(url, timeout=REQUEST_TIMEOUT, headers={
-        "User-Agent": "Mozilla/5.0"
-    })
+    r = requests.get(url, timeout=REQUEST_TIMEOUT, headers={"User-Agent": "Mozilla/5.0"})
     r.raise_for_status()
     return r.json()
 
@@ -580,69 +582,81 @@ def find_event_by_game_id(league_name, date_yyyymmdd, game_id):
     return None
 
 
-def extract_playsport_blocks(html):
-    blocks = []
-    pattern = re.compile(r"###\s+(\d+)(.*?)(?=\nL?###\s+\d+|\Z)", re.S)
-    # fallback for raw html/text parse below; use simpler segmentation on "### "
-    parts = re.split(r"\n###\s+", html)
-    for part in parts[1:]:
-        text = "### " + part
-        blocks.append(text)
-    return blocks
+def split_playsport_blocks(page_text):
+    text = page_text.replace("\r\n", "\n")
+    parts = re.split(r"(?=\n###\s+\d+)", "\n" + text)
+    return [p.strip() for p in parts if p.strip().startswith("###")]
 
 
-def parse_playsport_candidate_blocks(page_text, league):
-    blocks = extract_playsport_blocks(page_text)
+def parse_playsport_candidate_blocks(page_text):
+    blocks = split_playsport_blocks(page_text)
     out = []
+
     for block in blocks:
-        score_match = re.search(r"\*\s*(\d+)\s*\n\s*\*\s*V\.S\.\s*\n\s*\*\s*(\d+)", block)
-        away_score = None
-        home_score = None
+        teams = re.findall(r"【\d+†([^】]+)】", block)
+        if len(teams) < 2:
+            continue
+
+        away_name = clean_str(teams[-2])
+        home_name = clean_str(teams[-1])
+
+        score_match = re.search(r"\*\s*(\d+)\s*\n\s*\*\s*V\.S\.\s*\n\s*\*\s*(\d+)", block, re.S)
+        final_score = ""
         if score_match:
             away_score = int(score_match.group(1))
             home_score = int(score_match.group(2))
+            if not (away_score == 0 and home_score == 0):
+                final_score = f"{away_score}:{home_score}"
 
-        team_names = re.findall(r"【\d+†([^】]+)】", block)
-        if len(team_names) >= 2:
-            away_name = clean_str(team_names[-2])
-            home_name = clean_str(team_names[-1])
-        else:
-            continue
-
-        spread_candidates = re.findall(r"[客主][+-]1\.5[,，]?\s*[\d.]+", block)
-        total_candidates = re.findall(r"[大小]\s*([\d.]+)[贏輸]?\s*50%?", block)
-        total_line = None
-        if total_candidates:
-            try:
-                total_line = float(total_candidates[0])
-            except Exception:
-                total_line = None
+        spread_values = re.findall(r"[客主][+-]([0-9]+(?:\.[0-9]+)?)", block)
+        total_values = re.findall(r"[大小]\s*([0-9]+(?:\.[0-9]+)?)", block)
 
         spread_line = None
-        spread_abs = re.search(r"[客主][+-]([0-9.]+)", " ".join(spread_candidates))
-        if spread_abs:
-            try:
-                spread_line = float(spread_abs.group(1))
-            except Exception:
-                spread_line = None
+        total_line = None
+
+        if spread_values:
+            vals = []
+            for v in spread_values:
+                try:
+                    vals.append(float(v))
+                except Exception:
+                    pass
+            if vals:
+                spread_line = min(vals)
+
+        if total_values:
+            vals = []
+            for v in total_values:
+                try:
+                    vals.append(float(v))
+                except Exception:
+                    pass
+            if vals:
+                total_line = vals[0]
 
         out.append({
             "away_name": away_name,
             "home_name": home_name,
-            "final_score": f"{away_score}:{home_score}" if away_score is not None and home_score is not None else "",
+            "final_score": final_score,
             "spread_line": spread_line,
             "total_line": total_line,
-            "raw_block": block[:800],
+            "raw_block": block[:1200],
         })
+
     return out
 
 
 def find_playsport_match(league, away_team, home_team, page_text):
-    candidates = parse_playsport_candidate_blocks(page_text, league)
+    candidates = parse_playsport_candidate_blocks(page_text)
+    best = None
+
     for item in candidates:
-        if team_alias_hit(league, away_team, item["away_name"]) and team_alias_hit(league, home_team, item["home_name"]):
-            return item
-    return None
+        if team_pair_match(league, away_team, home_team, item["away_name"], item["home_name"]):
+            best = item
+            if item.get("final_score"):
+                return item
+
+    return best
 
 
 def fmt_num_for_sheet(v):
@@ -666,7 +680,6 @@ def refresh_row_from_sources(row, playsport_text_cache=None):
     next_row = dict(row)
     changed = False
 
-    # 1) ESPN by game id
     try:
         event = find_event_by_game_id(league, date_key, game_id)
     except Exception:
@@ -698,7 +711,6 @@ def refresh_row_from_sources(row, playsport_text_cache=None):
             next_row["更新時間"] = now_taipei_iso()
             return next_row, True, "espn_updated"
 
-    # 2) playsport by team names
     try:
         if playsport_text_cache is None:
             playsport_text_cache = fetch_text(playsport_result_url(league))
@@ -742,6 +754,7 @@ def judge_pick_result(row, pick_key):
     final_score = parse_final_score(row.get("最終比分"))
     if not final_score or is_invalid_placeholder_score(final_score):
         return ""
+
     away_score, home_score = final_score
     away_team = clean_str(row.get("客隊"))
     home_team = clean_str(row.get("主隊"))
@@ -765,6 +778,7 @@ def judge_pick_result(row, pick_key):
         return ""
 
     team_name = pick.replace("讓分", "").replace("受讓", "").strip()
+
     if team_name == away_team:
         diff = away_score - home_score
     elif team_name == home_team:
@@ -871,6 +885,7 @@ def save_result():
         data = request.get_json(force=True, silent=True) or {}
         if not isinstance(data, dict):
             return jsonify({"ok": False, "error": "Invalid JSON payload"}), 400
+
         game_id = clean_str(alias_value(data, "比賽ID"))
         if not game_id:
             return jsonify({"ok": False, "error": "Missing 比賽ID"}), 400
@@ -924,10 +939,10 @@ def refresh_events():
 
         rows = get_all_records_safe(ws, header)
         end_col = col_to_a1(len(header))
-
         checked = 0
         updated = 0
         details = []
+
         playsport_text_cache = None
         if league in LEAGUE_CONFIG:
             try:
@@ -938,12 +953,13 @@ def refresh_events():
         for idx, row in enumerate(rows, start=2):
             checked += 1
             next_row, changed, reason = refresh_row_from_sources(row, playsport_text_cache=playsport_text_cache)
+
             if changed:
                 write_row = build_row_from_header(next_row, header)
                 ws.update(f"A{idx}:{end_col}{idx}", [write_row])
                 updated += 1
 
-            if len(details) < 100:
+            if len(details) < 200:
                 details.append({
                     "row": idx,
                     "game_id": clean_str(row.get("比賽ID")),
@@ -1089,7 +1105,7 @@ def debug_unfilled():
         out = []
         for row in rows:
             reason = unfilled_reason(row)
-            if reason not in {"filled_or_pass"}:
+            if reason != "filled_or_pass":
                 out.append({
                     "game_id": clean_str(row.get("比賽ID")),
                     "date": clean_str(row.get("比賽日期")),
