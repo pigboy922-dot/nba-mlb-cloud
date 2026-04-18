@@ -6,7 +6,6 @@ from flask_cors import CORS
 import gspread
 from google.oauth2.service_account import Credentials
 
-
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
@@ -24,6 +23,51 @@ _SHEET = None
 _WS_CACHE = {}
 _HEADER_CACHE = {}
 
+# 你目前表頭會用到的核心欄位，先固定住，避免不同分頁表頭飄掉
+DEFAULT_HEADERS = [
+    "比賽ID",
+    "聯盟",
+    "賽季",
+    "比賽日期",
+    "對戰",
+    "主隊",
+    "客隊",
+    "讓分盤",
+    "大小分盤",
+    "最終比分",
+    "判定時間",
+    "更新時間",
+    "近10讓分推薦",
+    "近10讓分結果",
+    "近10大小_淨值推薦",
+    "近10大小_淨值結果",
+    "近10大小_相加推薦",
+    "近10大小_相加結果",
+    "主客讓分推薦",
+    "主客讓分結果",
+    "主客大小_淨值推薦",
+    "主客大小_淨值結果",
+    "主客大小_相加推薦",
+    "主客大小_相加結果",
+    "EDGE讓分推薦",
+    "EDGE讓分結果",
+    "EDGE大小推薦",
+    "EDGE大小結果",
+    "EDGE讓分值",
+    "EDGE大小值",
+]
+
+RESULT_KEYS = [
+    "近10讓分結果",
+    "近10大小_淨值結果",
+    "近10大小_相加結果",
+    "主客讓分結果",
+    "主客大小_淨值結果",
+    "主客大小_相加結果",
+    "EDGE讓分結果",
+    "EDGE大小結果",
+]
+
 
 def safe_str(value):
     if value is None:
@@ -31,6 +75,19 @@ def safe_str(value):
     if isinstance(value, (dict, list)):
         return json.dumps(value, ensure_ascii=False)
     return str(value)
+
+
+def clean_str(value):
+    return safe_str(value).strip()
+
+
+def normalize_score_text(value):
+    s = clean_str(value)
+    if not s:
+        return ""
+    if not s.startswith("'"):
+        s = "'" + s
+    return s
 
 
 def get_gspread_client():
@@ -62,8 +119,13 @@ def get_spreadsheet():
     return _SHEET
 
 
+def list_worksheets():
+    sh = get_spreadsheet()
+    return sh.worksheets()
+
+
 def get_worksheet_by_name(title):
-    key = safe_str(title).strip()
+    key = clean_str(title)
     if not key:
         raise RuntimeError("Worksheet title is empty")
 
@@ -75,7 +137,7 @@ def get_worksheet_by_name(title):
     try:
         ws = sh.worksheet(key)
     except gspread.WorksheetNotFound:
-        ws = sh.add_worksheet(title=key, rows=2000, cols=120)
+        ws = sh.add_worksheet(title=key, rows=5000, cols=160)
 
     _WS_CACHE[key] = ws
     return ws
@@ -83,7 +145,7 @@ def get_worksheet_by_name(title):
 
 def read_header(ws):
     first_row = ws.row_values(1)
-    return [str(h).strip() for h in first_row if str(h).strip()]
+    return [clean_str(h) for h in first_row if clean_str(h)]
 
 
 def get_header(ws, force_refresh=False):
@@ -98,17 +160,12 @@ def get_header(ws, force_refresh=False):
 
 
 def set_header(ws, header):
-    cleaned = [str(h).strip() for h in (header or []) if str(h).strip()]
+    cleaned = [clean_str(h) for h in (header or []) if clean_str(h)]
     if not cleaned:
         return
 
     ws.update("1:1", [cleaned])
     _HEADER_CACHE[ws.title] = cleaned
-
-
-def list_worksheets():
-    sh = get_spreadsheet()
-    return sh.worksheets()
 
 
 def find_first_non_empty_header(exclude_titles=None):
@@ -134,18 +191,7 @@ def get_template_header():
     if fallback_header:
         return fallback_ws, fallback_header
 
-    raise RuntimeError(
-        f"找不到可用表頭：{WORKSHEET_NAME} 第1列為空，且其他分頁也沒有表頭"
-    )
-
-
-def normalize_score_text(value):
-    s = safe_str(value).strip()
-    if not s:
-        return ""
-    if not s.startswith("'"):
-        s = "'" + s
-    return s
+    return template_ws, DEFAULT_HEADERS[:]
 
 
 def alias_value(data, col_name):
@@ -176,30 +222,14 @@ def alias_value(data, col_name):
     return ""
 
 
-def build_row_from_existing_header(data, header):
-    row = []
-
-    for col in header:
-        value = alias_value(data, col)
-
-        if col == "最終比分":
-            row.append(normalize_score_text(value))
-        else:
-            row.append(safe_str(value))
-
-    return row
-
-
 def get_target_worksheet_name(data):
-    league = safe_str(alias_value(data, "聯盟")).strip().upper()
-    season = safe_str(alias_value(data, "賽季")).strip()
+    league = clean_str(alias_value(data, "聯盟")).upper()
+    season = clean_str(alias_value(data, "賽季"))
 
     if league and season:
         return f"{league}_{season}"
-
     if season:
         return season
-
     return WORKSHEET_NAME
 
 
@@ -214,6 +244,112 @@ def ensure_target_worksheet_with_header(data):
     source_ws, template_header = get_template_header()
     set_header(ws, template_header)
     return ws, template_header, source_ws.title
+
+
+def build_row_from_header(data, header):
+    row = []
+
+    for col in header:
+        value = alias_value(data, col)
+
+        if col == "最終比分":
+            row.append(normalize_score_text(value))
+        else:
+            row.append(safe_str(value))
+
+    return row
+
+
+def col_to_a1(n):
+    result = ""
+    while n > 0:
+        n, rem = divmod(n - 1, 26)
+        result = chr(65 + rem) + result
+    return result
+
+
+def get_all_records_safe(ws, header):
+    rows = ws.get_all_values()
+    if not rows:
+        return []
+
+    if len(rows) <= 1:
+        return []
+
+    data_rows = rows[1:]
+    width = len(header)
+    out = []
+
+    for row in data_rows:
+        padded = list(row) + [""] * max(0, width - len(row))
+        padded = padded[:width]
+        obj = {header[i]: padded[i] for i in range(width)}
+        out.append(obj)
+
+    return out
+
+
+def find_row_by_game_id(ws, header, game_id):
+    gid = clean_str(game_id)
+    if not gid:
+        return None
+
+    try:
+        col_idx = header.index("比賽ID") + 1
+    except ValueError:
+        return None
+
+    values = ws.col_values(col_idx)
+    for i in range(2, len(values) + 1):
+        if clean_str(values[i - 1]) == gid:
+            return i
+    return None
+
+
+def merge_payload_with_existing(existing_row, payload, header):
+    merged = {}
+
+    for col in header:
+        old_val = existing_row.get(col, "")
+        new_val = alias_value(payload, col)
+
+        if new_val is None:
+            new_val = ""
+
+        if clean_str(new_val) != "":
+            merged[col] = new_val
+        else:
+            merged[col] = old_val
+
+    return merged
+
+
+def parse_limit(default_value=5000, max_value=20000):
+    raw = request.args.get("limit", str(default_value))
+    try:
+        n = int(raw)
+    except Exception:
+        n = default_value
+    if n < 1:
+        n = 1
+    if n > max_value:
+        n = max_value
+    return n
+
+
+def worksheet_name_from_query():
+    league = clean_str(request.args.get("league")).upper()
+    season = clean_str(request.args.get("season"))
+
+    if league and season:
+        return f"{league}_{season}"
+    if season:
+        return season
+    return WORKSHEET_NAME
+
+
+def build_stats_rows(rows):
+    return rows
 
 
 @app.route("/", methods=["GET"])
@@ -246,7 +382,82 @@ def health():
             "fallback_header_count": fallback_header_count,
             "worksheets": [ws.title for ws in list_worksheets()],
         }), 200
+
     except Exception as e:
+        return jsonify({
+            "ok": False,
+            "error": str(e),
+            "type": e.__class__.__name__,
+        }), 500
+
+
+@app.route("/results", methods=["GET"])
+def results():
+    try:
+        ws_name = worksheet_name_from_query()
+        ws = get_worksheet_by_name(ws_name)
+        header = get_header(ws, force_refresh=True)
+
+        if not header:
+            return jsonify({
+                "ok": True,
+                "rows": [],
+                "worksheet": ws.title,
+                "count": 0,
+            }), 200
+
+        rows = get_all_records_safe(ws, header)
+        limit = parse_limit()
+
+        # 最新的擺前面，讓前端回填先處理最近的
+        rows = list(reversed(rows))
+        rows = rows[:limit]
+
+        return jsonify({
+            "ok": True,
+            "rows": rows,
+            "worksheet": ws.title,
+            "count": len(rows),
+        }), 200
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({
+            "ok": False,
+            "error": str(e),
+            "type": e.__class__.__name__,
+        }), 500
+
+
+@app.route("/stats", methods=["GET"])
+def stats():
+    try:
+        ws_name = worksheet_name_from_query()
+        ws = get_worksheet_by_name(ws_name)
+        header = get_header(ws, force_refresh=True)
+
+        if not header:
+            return jsonify({
+                "ok": True,
+                "rows": [],
+                "worksheet": ws.title,
+                "count": 0,
+            }), 200
+
+        rows = get_all_records_safe(ws, header)
+        limit = parse_limit()
+        rows = list(reversed(rows))
+        rows = rows[:limit]
+
+        return jsonify({
+            "ok": True,
+            "rows": build_stats_rows(rows),
+            "worksheet": ws.title,
+            "count": len(rows),
+        }), 200
+
+    except Exception as e:
+        traceback.print_exc()
         return jsonify({
             "ok": False,
             "error": str(e),
@@ -268,19 +479,42 @@ def save_result():
                 "error": "Invalid JSON payload",
             }), 400
 
+        game_id = clean_str(alias_value(data, "比賽ID"))
+        if not game_id:
+            return jsonify({
+                "ok": False,
+                "error": "Missing 比賽ID",
+            }), 400
+
         ws, header, header_source = ensure_target_worksheet_with_header(data)
-        row = build_row_from_existing_header(data, header)
-        ws.append_row(row, value_input_option="RAW")
+
+        existing_row_no = find_row_by_game_id(ws, header, game_id)
+
+        if existing_row_no:
+            records = get_all_records_safe(ws, header)
+            existing_idx = existing_row_no - 2
+            existing_row = records[existing_idx] if 0 <= existing_idx < len(records) else {}
+            merged = merge_payload_with_existing(existing_row, data, header)
+            row = build_row_from_header(merged, header)
+
+            end_col = col_to_a1(len(header))
+            ws.update(f"A{existing_row_no}:{end_col}{existing_row_no}", [row])
+            action = "updated"
+        else:
+            row = build_row_from_header(data, header)
+            ws.append_row(row, value_input_option="RAW")
+            action = "inserted"
 
         return jsonify({
             "ok": True,
             "message": "saved",
+            "action": action,
             "worksheet": ws.title,
             "header_count": len(header),
             "header_source": header_source or ws.title,
-            "game_id": safe_str(alias_value(data, "比賽ID")),
-            "league": safe_str(alias_value(data, "聯盟")),
-            "season": safe_str(alias_value(data, "賽季")),
+            "game_id": game_id,
+            "league": clean_str(alias_value(data, "聯盟")),
+            "season": clean_str(alias_value(data, "賽季")),
         }), 200
 
     except Exception as e:
