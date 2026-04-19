@@ -68,11 +68,14 @@ PICK_RESULT_PAIRS = [
     ("近10讓分推薦", "近10讓分結果"),
     ("近10大小_淨值推薦", "近10大小_淨值結果"),
     ("近10大小_相加推薦", "近10大小_相加結果"),
+    # 主客系列保留欄位相容性，但不再納入主流程判定/回填/統計
+    ("EDGE讓分推薦", "EDGE讓分結果"),
+    ("EDGE大小推薦", "EDGE大小結果"),
+]
+INACTIVE_PICK_RESULT_PAIRS = [
     ("主客讓分推薦", "主客讓分結果"),
     ("主客大小_淨值推薦", "主客大小_淨值結果"),
     ("主客大小_相加推薦", "主客大小_相加結果"),
-    ("EDGE讓分推薦", "EDGE讓分結果"),
-    ("EDGE大小推薦", "EDGE大小結果"),
 ]
 
 RESULT_KEYS = [result_key for _, result_key in PICK_RESULT_PAIRS]
@@ -375,6 +378,20 @@ def ensure_target_worksheet_with_header(data):
     source_ws, template_header = get_template_header()
     set_header(ws, template_header)
     return ws, template_header, source_ws.title
+
+
+def normalize_inactive_pick_fields(data):
+    if not isinstance(data, dict):
+        return data
+    data = dict(data)
+    inactive_cols = set()
+    for pick_key, result_key in INACTIVE_PICK_RESULT_PAIRS:
+        inactive_cols.add(pick_key)
+        inactive_cols.add(result_key)
+    for col in inactive_cols:
+        if col in data:
+            data[col] = ""
+    return data
 
 
 def build_row_from_header(data, header):
@@ -948,6 +965,8 @@ def save_result():
         data = request.get_json(force=True, silent=True) or {}
         if not isinstance(data, dict):
             return jsonify({"ok": False, "error": "Invalid JSON payload"}), 400
+
+        data = normalize_inactive_pick_fields(data)
 
         game_id = clean_str(alias_value(data, "比賽ID"))
         if not game_id:
