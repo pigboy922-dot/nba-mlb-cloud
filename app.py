@@ -58,10 +58,6 @@ PREFERRED_COLUMNS = [
     "近10型態",
     "淨值差",
     "節奏差",
-    # 下面保留給後端更新/去重使用，避免重複新增資料
-    "賽季",
-    "更新時間",
-    "比賽ID",
 ]
 
 ESPN_SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/scoreboard"
@@ -291,14 +287,8 @@ def get_or_create_worksheet(spreadsheet, title: str):
 
 
 def build_sheet_headers(existing_headers: List[str], payload: Dict[str, Any]) -> List[str]:
-    headers = [h for h in existing_headers if normalize_str(h)]
-    if not headers:
-        headers = list(PREFERRED_COLUMNS)
-
-    for key in payload.keys():
-        if key not in headers:
-            headers.append(key)
-    return headers
+    # 固定只使用指定欄位；不要把 payload 裡的其他 key 自動加到 Google Sheet。
+    return list(PREFERRED_COLUMNS)
 
 
 def col_to_a1(col_num: int) -> str:
@@ -309,30 +299,33 @@ def col_to_a1(col_num: int) -> str:
     return result
 
 
+def force_preferred_headers(ws, existing_headers: Optional[List[str]] = None) -> List[str]:
+    headers = list(PREFERRED_COLUMNS)
+    end_col = col_to_a1(len(headers))
+    ws.update(f"A1:{end_col}1", [headers])
+
+    old_len = len(existing_headers or [])
+    if old_len > len(headers):
+        first_extra = len(headers) + 1
+        try:
+            ws.delete_columns(first_extra, old_len)
+        except Exception:
+            try:
+                ws.batch_clear([f"{col_to_a1(first_extra)}1:{col_to_a1(old_len)}10000"])
+            except Exception:
+                pass
+    return headers
+
+
 def worksheet_records_index(ws) -> Tuple[List[str], Dict[str, int]]:
     values = ws.get_all_values()
-    if not values:
-        ws.append_row(PREFERRED_COLUMNS, value_input_option="USER_ENTERED")
-        values = ws.get_all_values()
+    existing_headers = values[0] if values else []
+    headers = force_preferred_headers(ws, existing_headers)
 
-    headers = values[0] if values else list(PREFERRED_COLUMNS)
     index: Dict[str, int] = {}
-
-    try:
-        gid_idx = headers.index("比賽ID")
-        league_idx = headers.index("聯盟")
-        season_idx = headers.index("賽季")
-        date_idx = headers.index("比賽日期")
-    except ValueError:
-        new_headers = build_sheet_headers(headers, {h: "" for h in PREFERRED_COLUMNS})
-        end_col = col_to_a1(len(new_headers))
-        ws.update(f"A1:{end_col}1", [new_headers])
-        values = ws.get_all_values()
-        headers = values[0]
-        gid_idx = headers.index("比賽ID")
-        league_idx = headers.index("聯盟")
-        season_idx = headers.index("賽季")
-        date_idx = headers.index("比賽日期")
+    league_idx = headers.index("聯盟")
+    date_idx = headers.index("比賽日期")
+    matchup_idx = headers.index("對戰")
 
     for row_num, row in enumerate(values[1:], start=2):
         def cell(i: int) -> str:
@@ -340,9 +333,8 @@ def worksheet_records_index(ws) -> Tuple[List[str], Dict[str, int]]:
 
         key = "|".join([
             normalize_str(cell(league_idx)),
-            normalize_str(cell(season_idx)),
             normalize_str(cell(date_idx)),
-            normalize_str(cell(gid_idx)),
+            normalize_str(cell(matchup_idx)),
         ])
         if key.strip("|"):
             index[key] = row_num
@@ -363,19 +355,11 @@ def maybe_mirror_to_sheet(payload: Dict[str, Any]) -> Dict[str, Any]:
         ws = get_or_create_worksheet(ss, GOOGLE_SHEET_NAME)
         headers, row_index = worksheet_records_index(ws)
 
-        new_headers = build_sheet_headers(headers, payload)
-        if new_headers != headers:
-            end_col = col_to_a1(len(new_headers))
-            ws.update(f"A1:{end_col}1", [new_headers])
-            headers = new_headers
-            _, row_index = worksheet_records_index(ws)
-
         row_values = [payload.get(h, "") for h in headers]
         key = "|".join([
             normalize_str(payload.get("聯盟")),
-            normalize_str(payload.get("賽季")),
             normalize_str(payload.get("比賽日期")),
-            normalize_str(payload.get("比賽ID")),
+            normalize_str(payload.get("對戰")),
         ])
 
         if key in row_index:
@@ -400,7 +384,6 @@ def maybe_mirror_to_sheet(payload: Dict[str, Any]) -> Dict[str, Any]:
             "enabled": True,
             "error": str(exc),
         }
-
 
 def proxy_scoreboard(league: str, sport: str, dates: str):
     if not league or not sport or not dates:
