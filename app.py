@@ -32,12 +32,9 @@ GOOGLE_SHEETS_SPREADSHEET_ID = (
     or os.environ.get("SPREADSHEET_ID", "").strip()
 )
 GOOGLE_SERVICE_ACCOUNT_JSON = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
-GOOGLE_SHEET_NAME = (
-    os.environ.get("GOOGLE_SHEET_NAME", "").strip()
-    or os.environ.get("WORKSHEET_NAME", "").strip()
-    or os.environ.get("RESULTS_WORKSHEET", "").strip()
-    or "results"
-)
+# Force Google Sheets mirror to the fixed worksheet.
+# Do not use env worksheet aliases here, otherwise Render env like NBA_2026 can route writes to the wrong tab.
+GOOGLE_SHEET_NAME = "results"
 
 PREFERRED_COLUMNS = [
     "聯盟", "賽季", "比賽日期", "對戰", "主隊", "客隊", "最終比分",
@@ -45,6 +42,7 @@ PREFERRED_COLUMNS = [
     "客隊近10場平均得分", "客隊近10場平均失分", "客隊近10場平均淨值",
     "主隊近10場平均得分", "主隊近10場平均失分", "主隊近10場平均淨值",
     "客隊近10得分-失分", "主隊近10得分-失分",
+    "節奏差", "淨值差",
     "主客節奏差", "主客淨值差", "更新時間",
     "規則1讓分推薦", "規則1讓分結果",
     "規則2讓分推薦", "規則2讓分結果",
