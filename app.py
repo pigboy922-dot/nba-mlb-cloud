@@ -45,6 +45,8 @@ PREFERRED_COLUMNS = [
     "最終比分",
     "讓分盤",
     "主客讓分盤",
+    "即時盤口",
+    "終盤",
     "大小分盤",
     "客隊近10場平均得分",
     "客隊近10場平均失分",
@@ -58,6 +60,16 @@ PREFERRED_COLUMNS = [
     "近10型態",
     "淨值差",
     "節奏差",
+    "規則1讓分推薦",
+    "規則1讓分結果",
+    "規則2讓分推薦",
+    "規則2讓分結果",
+    "規則3讓分推薦",
+    "規則3讓分結果",
+    "規則3大小推薦",
+    "規則3大小結果",
+    "規則4大小推薦",
+    "規則4大小結果",
 ]
 
 ESPN_SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/{sport}/{league}/scoreboard"
@@ -167,6 +179,27 @@ def upsert_result(payload: Dict[str, Any]) -> Dict[str, Any]:
     season = normalize_int_str(data["賽季"])
     game_date = normalize_str(data["比賽日期"])
     game_id = normalize_str(data["比賽ID"])
+    existing_row = db.execute(
+        "SELECT raw_json FROM results WHERE league = ? AND season = ? AND game_date = ? AND game_id = ?",
+        (league, season, game_date, game_id),
+    ).fetchone()
+    if existing_row is not None:
+        try:
+            existing_data = json.loads(existing_row["raw_json"])
+        except Exception:
+            existing_data = {}
+        merged_data = dict(existing_data)
+        merged_data.update(data)
+        # 即時盤口只在第一次寫入時鎖定；之後回填比分 / 終盤時不得覆蓋。
+        if normalize_str(existing_data.get("即時盤口")):
+            merged_data["即時盤口"] = existing_data.get("即時盤口")
+        if normalize_str(existing_data.get("判定時間")):
+            merged_data["判定時間"] = existing_data.get("判定時間")
+        # 終盤只有收到完賽盤口時才補；空值不得蓋掉既有終盤。
+        if normalize_str(existing_data.get("終盤")) and not normalize_str(data.get("終盤")):
+            merged_data["終盤"] = existing_data.get("終盤")
+        data = merged_data
+
     matchup = normalize_str(data.get("對戰"))
     home_team = normalize_str(data.get("主隊"))
     away_team = normalize_str(data.get("客隊"))
