@@ -32,8 +32,7 @@ GOOGLE_SHEETS_SPREADSHEET_ID = (
     or os.environ.get("SPREADSHEET_ID", "").strip()
 )
 GOOGLE_SERVICE_ACCOUNT_JSON = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "").strip()
-# Force Google Sheets mirror to the fixed worksheet.
-# Do not use env worksheet aliases here, otherwise Render env like NBA_2026 can route writes to the wrong tab.
+# Default fallback worksheet name. Normal writes use dynamic tabs like mlb_2026 / nba_2025.
 GOOGLE_SHEET_NAME = "results"
 
 PREFERRED_COLUMNS = [
@@ -377,6 +376,16 @@ def worksheet_records_index(ws) -> Tuple[List[str], Dict[str, int]]:
     return headers, index
 
 
+def get_dynamic_sheet_name(payload: Dict[str, Any]) -> str:
+    league = normalize_str(payload.get("聯盟")).lower()
+    season = normalize_str(payload.get("賽季"))
+
+    if league in ("mlb", "nba") and season:
+        return f"{league}_{season}"
+
+    return GOOGLE_SHEET_NAME
+
+
 def maybe_mirror_to_sheet(payload: Dict[str, Any]) -> Dict[str, Any]:
     client = get_sheet_client()
     if client is None:
@@ -385,9 +394,11 @@ def maybe_mirror_to_sheet(payload: Dict[str, Any]) -> Dict[str, Any]:
             "reason": "google_sheets_not_configured_or_dependencies_missing",
         }
 
+    sheet_name = get_dynamic_sheet_name(payload)
+
     try:
         ss = client.open_by_key(GOOGLE_SHEETS_SPREADSHEET_ID)
-        ws = get_or_create_worksheet(ss, GOOGLE_SHEET_NAME)
+        ws = get_or_create_worksheet(ss, sheet_name)
         headers, row_index = worksheet_records_index(ws)
 
         row_values = [payload.get(h, "") for h in headers]
@@ -403,7 +414,7 @@ def maybe_mirror_to_sheet(payload: Dict[str, Any]) -> Dict[str, Any]:
             ws.update(f"A{row_num}:{end_col}{row_num}", [row_values])
             return {
                 "enabled": True,
-                "worksheet": GOOGLE_SHEET_NAME,
+                "worksheet": sheet_name,
                 "action": "update",
                 "row": row_num,
             }
@@ -411,15 +422,15 @@ def maybe_mirror_to_sheet(payload: Dict[str, Any]) -> Dict[str, Any]:
         ws.append_row(row_values, value_input_option="USER_ENTERED")
         return {
             "enabled": True,
-            "worksheet": GOOGLE_SHEET_NAME,
+            "worksheet": sheet_name,
             "action": "append",
         }
     except Exception as exc:
         return {
             "enabled": True,
+            "worksheet": sheet_name,
             "error": str(exc),
         }
-
 def proxy_scoreboard(league: str, sport: str, dates: str):
     if not league or not sport or not dates:
         return jsonify({"ok": False, "error": "league, sport, dates are required"}), 400
@@ -451,6 +462,8 @@ def root():
         ],
         "google_sheet_enabled": bool(GOOGLE_SHEETS_SPREADSHEET_ID and GOOGLE_SERVICE_ACCOUNT_JSON),
         "google_sheet_name": GOOGLE_SHEET_NAME,
+        "google_sheet_mode": "dynamic_by_league_season",
+        "google_sheet_examples": ["mlb_2026", "nba_2025"],
     })
 
 
