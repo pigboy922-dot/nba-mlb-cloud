@@ -404,14 +404,14 @@ def get_or_create_worksheet(spreadsheet, title: str):
         ws = spreadsheet.add_worksheet(
             title=title,
             rows=2000,
-            cols=max(26, len(PREFERRED_COLUMNS) + 10),
+            cols=len(PREFERRED_COLUMNS),
         )
         ws.append_row(PREFERRED_COLUMNS, value_input_option="USER_ENTERED")
         return ws
 
 
 def build_sheet_headers(existing_headers: List[str], payload: Dict[str, Any]) -> List[str]:
-    # 固定只使用指定欄位；不要把 payload 裡的其他 key 自動加到 Google Sheet。
+    # Google Sheet 僅回寫 PREFERRED_COLUMNS；payload 其他內部欄位不進表。
     return list(PREFERRED_COLUMNS)
 
 
