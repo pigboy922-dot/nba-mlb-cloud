@@ -39,13 +39,13 @@ PREFERRED_COLUMNS = [
     "聯盟",
     "比賽日期",
     "對戰",
-    "主隊",
     "客隊",
+    "主隊",
     "最終比分",
     "讓分盤",
     "主客讓分盤",
     "即時盤口",
-    "終盤",
+    "亞洲讓分盤",
     "大小分盤",
     "客隊近10場平均得分",
     "客隊近10場平均失分",
@@ -61,6 +61,7 @@ PREFERRED_COLUMNS = [
     "讓分節奏差",
     "淨值差",
     "節奏差",
+    "節奏和",
     "規則1讓分推薦",
     "規則1讓分結果",
     "規則2讓分推薦",
@@ -172,10 +173,83 @@ def canonicalize_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
         game_id = f"{league}_{season}_{game_date}_{fallback}"
         data["比賽ID"] = game_id
 
+    # 統一 NBA / MLB 回寫欄位口徑：對戰固定客隊-主隊。
+    away = normalize_str(data.get("客隊"))
+    home = normalize_str(data.get("主隊"))
+    if away and home:
+        data["對戰"] = f"{away}-{home}"
+
+    # NBA 沒有人工 1+50 / 1-50 / 2-50 選盤流程，但欄位需與 MLB 一致。
+    # 因此 NBA 的「亞洲讓分盤」自動同步數字讓分盤；MLB 則仍以人工選盤值為準。
+    if league.upper() == "NBA" and not normalize_str(data.get("亞洲讓分盤")) and normalize_str(data.get("讓分盤")):
+        data["亞洲讓分盤"] = data.get("讓分盤")
+
     if not data.get("更新時間"):
         data["更新時間"] = utc_now_iso()
 
     return data
+
+
+def should_delete_mlb_row_without_asian(data: Dict[str, Any]) -> bool:
+    if normalize_str(data.get("聯盟")).upper() != "MLB":
+        return False
+    if normalize_str(data.get("亞洲讓分盤")):
+        return False
+    # 只有完賽或已準備判定時才刪；賽前推薦仍允許等待網頁人工選盤。
+    has_final = bool(normalize_str(data.get("最終比分")))
+    has_result = any(normalize_str(data.get(k)) for k in (
+        "規則1讓分結果", "規則2讓分結果", "規則3讓分結果",
+        "規則3大小結果", "規則4大小結果",
+    ))
+    return has_final or has_result or normalize_str(data.get("刪除原因")) == "MLB缺少亞洲讓分盤"
+
+def sheet_key_from_payload(payload: Dict[str, Any]) -> str:
+    return "|".join([
+        normalize_str(payload.get("聯盟")),
+        normalize_str(payload.get("比賽日期")),
+        normalize_str(payload.get("對戰")),
+    ])
+
+def maybe_delete_from_sheet(payload: Dict[str, Any]) -> Dict[str, Any]:
+    client = get_sheet_client()
+    if client is None:
+        return {"enabled": False, "reason": "google_sheets_not_configured_or_dependencies_missing", "action": "delete"}
+    sheet_name = get_dynamic_sheet_name(payload)
+    try:
+        ss = client.open_by_key(GOOGLE_SHEETS_SPREADSHEET_ID)
+        ws = get_or_create_worksheet(ss, sheet_name)
+        headers, row_index = worksheet_records_index(ws)
+        key = sheet_key_from_payload(payload)
+        row_num = row_index.get(key)
+        if row_num:
+            ws.delete_rows(row_num)
+            return {"enabled": True, "worksheet": sheet_name, "action": "delete", "row": row_num}
+        return {"enabled": True, "worksheet": sheet_name, "action": "delete", "row": None}
+    except Exception as exc:
+        return {"enabled": True, "worksheet": sheet_name, "action": "delete", "error": str(exc)}
+
+def delete_result_record(data: Dict[str, Any]) -> Dict[str, Any]:
+    db = get_db()
+    league = normalize_str(data["聯盟"])
+    season = normalize_int_str(data["賽季"])
+    game_date = normalize_str(data["比賽日期"])
+    game_id = normalize_str(data["比賽ID"])
+    db.execute(
+        "DELETE FROM results WHERE league = ? AND season = ? AND game_date = ? AND game_id = ?",
+        (league, season, game_date, game_id),
+    )
+    db.commit()
+    mirror_info = maybe_delete_from_sheet(data)
+    return {
+        "ok": True,
+        "league": league,
+        "season": season,
+        "game_date": game_date,
+        "game_id": game_id,
+        "action": "delete",
+        "reason": "MLB_missing_asian_handicap",
+        "sheet": mirror_info,
+    }
 
 
 def upsert_result(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -187,6 +261,9 @@ def upsert_result(payload: Dict[str, Any]) -> Dict[str, Any]:
     season = normalize_int_str(data["賽季"])
     game_date = normalize_str(data["比賽日期"])
     game_id = normalize_str(data["比賽ID"])
+    if not normalize_str(data.get("亞洲讓分盤")) and normalize_str(data.get("終盤")):
+        data["亞洲讓分盤"] = data.get("終盤")
+
     existing_row = db.execute(
         "SELECT raw_json FROM results WHERE league = ? AND season = ? AND game_date = ? AND game_id = ?",
         (league, season, game_date, game_id),
@@ -198,15 +275,21 @@ def upsert_result(payload: Dict[str, Any]) -> Dict[str, Any]:
             existing_data = {}
         merged_data = dict(existing_data)
         merged_data.update(data)
-        # 即時盤口只在第一次寫入時鎖定；之後回填比分 / 終盤時不得覆蓋。
+        # 即時盤口只在第一次寫入時鎖定；之後回填比分 / 亞洲讓分盤時不得覆蓋。
         if normalize_str(existing_data.get("即時盤口")):
             merged_data["即時盤口"] = existing_data.get("即時盤口")
         if normalize_str(existing_data.get("判定時間")):
             merged_data["判定時間"] = existing_data.get("判定時間")
-        # 終盤只有收到完賽盤口時才補；空值不得蓋掉既有終盤。
-        if normalize_str(existing_data.get("終盤")) and not normalize_str(data.get("終盤")):
-            merged_data["終盤"] = existing_data.get("終盤")
+        # 亞洲讓分盤由網頁人工選盤回寫；空值不得蓋掉既有亞洲讓分盤。
+        if normalize_str(existing_data.get("亞洲讓分盤")) and not normalize_str(data.get("亞洲讓分盤")):
+            merged_data["亞洲讓分盤"] = existing_data.get("亞洲讓分盤")
+        # 舊資料可能仍有「終盤」，僅作為亞洲讓分盤的相容來源，不再輸出到 Google Sheet 欄位。
+        if not normalize_str(merged_data.get("亞洲讓分盤")) and normalize_str(existing_data.get("終盤")):
+            merged_data["亞洲讓分盤"] = existing_data.get("終盤")
         data = merged_data
+
+    if should_delete_mlb_row_without_asian(data):
+        return delete_result_record(data)
 
     matchup = normalize_str(data.get("對戰"))
     home_team = normalize_str(data.get("主隊"))
@@ -409,11 +492,7 @@ def maybe_mirror_to_sheet(payload: Dict[str, Any]) -> Dict[str, Any]:
         headers, row_index = worksheet_records_index(ws)
 
         row_values = [payload.get(h, "") for h in headers]
-        key = "|".join([
-            normalize_str(payload.get("聯盟")),
-            normalize_str(payload.get("比賽日期")),
-            normalize_str(payload.get("對戰")),
-        ])
+        key = sheet_key_from_payload(payload)
 
         if key in row_index:
             row_num = row_index[key]
@@ -471,6 +550,7 @@ def root():
         "google_sheet_name": GOOGLE_SHEET_NAME,
         "google_sheet_mode": "dynamic_by_league_season",
         "google_sheet_examples": ["mlb_2026", "nba_2025"],
+        "google_sheet_columns": "unified_nba_mlb_away_home_asian_handicap",
     })
 
 
