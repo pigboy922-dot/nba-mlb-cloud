@@ -442,38 +442,23 @@ function calcMlbPicksByManualAsianSelection(payload, asianLine) {
   let rule3 = 'PASS';
 
   if (
-    near10Pattern === '一正一負' && isMlbAsianLineValidForRule('rule1', asianLine) &&
-    netSum !== null && netSum >= -5.0 && netSum <= 2.75 &&
-    underdogNet !== null && underdogNet >= -4.0 && underdogNet <= 2.2 &&
-    underdogPace !== null && underdogPace <= 12.4 &&
-    favoritePaceDiff !== null && favoritePaceDiff >= -3.2 && favoritePaceDiff <= 5.4 &&
-    favoritePace !== null && favoritePace >= 7.1 && favoritePace <= 11.8 &&
-    totalLine !== null && totalLine >= 6.5 && totalLine <= 12.5 &&
-    (
-      (favoriteNetDiff !== null && favoriteNetDiff >= 4.0 && favoriteNetDiff <= 7.0) ||
-      (netSum <= 1.5 && underdogNet >= -3.0 && underdogNet <= 1.5 && favoritePace <= 10.5)
-    )
+    near10Pattern === '一正一負' && isMlbAsianLineValidForRule('rule1', asianLine)
   ) {
     rule1 = underdogName + ' 受讓';
   }
   if (
     near10Pattern === '一正一負' && isMlbAsianLineValidForRule('rule2', asianLine) &&
-    underdogNet !== null && underdogNet >= -1.25 && underdogNet <= 1.25 &&
-    favoriteNetDiff !== null && favoriteNetDiff >= -1.25 && favoriteNetDiff <= 3.5 &&
-    underdogPace !== null && underdogPace >= 7.75 && underdogPace <= 13.0 &&
     favoritePaceDiff !== null && favoritePaceDiff >= -0.5 && favoritePaceDiff <= 4.5
   ) {
     rule2 = favoriteName + ' 讓分';
   }
   if (
     near10Pattern === '雙正分' && isMlbAsianLineValidForRule('rule3', asianLine) &&
-    netSum !== null && netSum >= 0.75 && netSum <= 6.0 &&
-    underdogPace !== null && underdogPace >= 6.75 && underdogPace <= 13.0 &&
-    underdogNet !== null && underdogNet >= 0.25 && underdogNet <= 2.25 &&
     info.side === 'home'
   ) {
     rule3 = underdogName + ' 受讓';
   }
+
   return { rule1, rule2, rule3, favoritePaceDiff, favoriteNetDiff, netSum, paceSum };
 }
 
@@ -2456,39 +2441,25 @@ function buildMlbHighProfitRulePicks(left, right, market) {
     let r2 = 'PASS';
     let r3 = 'PASS';
 
-    // 規則1最終融合版：一正一負｜1-50｜買受讓方。
+    // 規則1：一正一負｜1-50｜買受讓方｜原規則，不加舊區間濾網。
     if (
-      near10Pattern === '一正一負' &&
-      netSum !== null && Number.isFinite(netSum) && netSum >= -5.0 && netSum <= 2.75 &&
-      underdogNet !== null && Number.isFinite(underdogNet) && underdogNet >= -4.0 && underdogNet <= 2.2 &&
-      underdogPace !== null && Number.isFinite(underdogPace) && underdogPace <= 12.4 &&
-      favoritePaceDiff !== null && Number.isFinite(favoritePaceDiff) && favoritePaceDiff >= -3.2 && favoritePaceDiff <= 5.4 &&
-      favoritePace !== null && Number.isFinite(favoritePace) && favoritePace >= 7.1 && favoritePace <= 11.8 &&
-      totalLine !== null && Number.isFinite(totalLine) && totalLine >= 6.5 && totalLine <= 12.5 &&
-      (
-        (favoriteNetDiff !== null && Number.isFinite(favoriteNetDiff) && favoriteNetDiff >= 4.0 && favoriteNetDiff <= 7.0) ||
-        (netSum <= 1.5 && underdogNet >= -3.0 && underdogNet <= 1.5 && favoritePace <= 10.5)
-      )
+      near10Pattern === '一正一負'
     ) {
       r1 = underdogName + ' 受讓';
     }
 
-    // 規則2穩定減注版：一正一負｜1+50｜買讓分方。
+    // 規則2：一正一負｜1+50｜買讓分方｜只保留節奏差 -0.5~4.5。
     if (
       near10Pattern === '一正一負' &&
-      underdogNet !== null && Number.isFinite(underdogNet) && underdogNet >= -1.25 && underdogNet <= 1.25 &&
-      favoriteNetDiff !== null && Number.isFinite(favoriteNetDiff) && favoriteNetDiff >= -1.25 && favoriteNetDiff <= 3.5 &&
-      underdogPace !== null && Number.isFinite(underdogPace) && underdogPace >= 7.75 && underdogPace <= 13.0
+      favoritePaceDiff !== null && Number.isFinite(favoritePaceDiff) && favoritePaceDiff >= -0.5 && favoritePaceDiff <= 4.5
     ) {
       r2 = favoriteName + ' 讓分';
     }
 
-    // 規則3微調版：雙正分｜1-50｜買受讓方。
+    // 規則3：雙正分｜1-50｜只保留客隊受讓。
     if (
       near10Pattern === '雙正分' &&
-      netSum !== null && Number.isFinite(netSum) && netSum >= 0.75 && netSum <= 6.0 &&
-      underdogPace !== null && Number.isFinite(underdogPace) && underdogPace >= 6.75 && underdogPace <= 13.0 &&
-      underdogNet !== null && Number.isFinite(underdogNet) && underdogNet >= 0.25 && underdogNet <= 2.25
+      favoriteSide === 'right'
     ) {
       r3 = underdogName + ' 受讓';
     }
