@@ -1,8 +1,10 @@
 services:
   - type: web
-    name: nba-mlb-cloud
+    name: nba-mlb-cloud-web
     env: python
     plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app
-    autoDeploy: true
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9

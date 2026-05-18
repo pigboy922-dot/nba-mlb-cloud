@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
-from flask import Flask, jsonify, request, g
+from flask import Flask, jsonify, request, g, send_from_directory
 from flask_cors import CORS
 
 try:
@@ -534,6 +534,12 @@ def proxy_scoreboard(league: str, sport: str, dates: str):
 
 @app.get("/")
 def root():
+    # Serve the dashboard HTML at the service root, so URLs like /?auto=0 open the app.
+    return send_from_directory(BASE_DIR, "index.html")
+
+
+@app.get("/api")
+def api_root():
     return jsonify({
         "ok": True,
         "service": "nba-mlb-cloud",
