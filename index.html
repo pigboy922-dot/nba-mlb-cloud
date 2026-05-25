@@ -186,7 +186,7 @@
       <label class="league-toggle"><input type="checkbox" id="mlbToggle" checked> MLB</label>
       <button class="btn-primary" id="todayBtn">更新今天</button>
       <button class="btn-secondary" id="tomorrowBtn">更新明天</button>
-      <div class="window-note" id="windowNote">目前顯示：NBA 主客鎖定版（N1一正一負只出主隊讓分｜N2一正一負大分主客都留｜N3一正一負小分主客都留｜N4雙正分只出主隊讓分｜N5雙負分只出主隊讓分）；MLB 全打版（R1：1-50受讓主客都留｜讓分方節奏8.1～11.8＋排除受讓方淨值-1～0；R2全新版：1+50讓分主客都留｜淨值差1.0～2.5＋讓分方節奏7.5～12.0＋大小7.0～10.0；R3風控版：1-50只出客隊受讓｜淨值和<4.5＋排除受讓方節奏10.1～11.5；符合就全出）；雙重賽第二場起不判斷；MLB亞洲盤口每天自動匯入 Playsport；符合推薦會自動出現在右上推薦總欄</div>
+      <div class="window-note" id="windowNote">目前顯示：NBA 主客鎖定版（N1一正一負只出主隊讓分｜N2一正一負大分主客都留｜N3一正一負小分主客都留｜N4雙正分只出主隊讓分｜N5雙負分只出主隊讓分）；MLB 改為 A∪C 去重模型盤口版（不用等 Playsport 盤口；A 或 C 任一命中即正式推薦，同一場同隊同買法只出一次；同時命中 A/C 會標示強訊號）；雙重賽第二場起不判斷；符合推薦會自動出現在右上推薦總欄</div>
       <div class="status muted" id="status">尚未更新</div>
       <div class="status muted" id="cloudStatus">雲端寫入：待命</div>
       <div class="status muted" id="playsportStatus">Playsport盤口：待命</div>
@@ -2625,7 +2625,7 @@ function buildNear10Card(leagueName, leagueKey, event, teamStatsMap, playSportMa
   // NBA 的亞洲讓分盤自動同步數字讓分盤；MLB 只使用本次從 Playsport 匯入的盤口，不再沿用手動按鈕或舊雲端盤口。
   const lockedAsianSpread = leagueKey === 'nba'
     ? (hasValue(existingPayload?.['亞洲讓分盤']) ? existingPayload['亞洲讓分盤'] : currentNumericSpread)
-    : (hasValue(autoAsianSpread) ? autoAsianSpread : '');
+    : (picks.modelAsianLine || '模型盤口');
   const payload = {
     '比賽ID': gameId,
     '聯盟': leagueName,
@@ -2640,9 +2640,9 @@ function buildNear10Card(leagueName, leagueKey, event, teamStatsMap, playSportMa
     '主客讓分盤': existingPayload && Object.prototype.hasOwnProperty.call(existingPayload, '主客讓分盤') ? existingPayload['主客讓分盤'] : currentSpreadText,
     '即時盤口': lockedInstantSpread,
     '亞洲讓分盤': lockedAsianSpread,
-    '亞洲盤口來源': leagueKey === 'mlb' && hasValue(autoAsianSpread) ? 'Playsport' : (hasValue(lockedAsianSpread) ? (existingPayload?.['亞洲盤口來源'] || '手動/雲端') : ''),
-    'Playsport盤口': leagueKey === 'mlb' && playSportMarket ? describePlaySportMarket(playSportMarket) : '',
-    'MLB自動盤口版本': leagueKey === 'mlb' && hasValue(autoAsianSpread) ? MLB_AUTO_MARKET_VERSION : '',
+    '亞洲盤口來源': leagueKey === 'mlb' ? '模型盤口A∪C去重' : (hasValue(lockedAsianSpread) ? (existingPayload?.['亞洲盤口來源'] || '手動/雲端') : ''),
+    'Playsport盤口': leagueKey === 'mlb' ? (picks.modelMarketText || '') : '',
+    'MLB自動盤口版本': leagueKey === 'mlb' ? 'model_ac_union_v1' : '',
     '大小分盤': existingPayload && Object.prototype.hasOwnProperty.call(existingPayload, '大小分盤') ? existingPayload['大小分盤'] : (market.total != null ? round1(market.total) : ''),
     '客隊近10場平均得分': left.avgAll ? round1(left.avgAll.pf) : '',
     '客隊近10場平均失分': left.avgAll ? round1(left.avgAll.pa) : '',
@@ -2669,17 +2669,13 @@ function buildNear10Card(leagueName, leagueKey, event, teamStatsMap, playSportMa
     '規則3大小推薦': leagueKey === 'nba' ? picks.rule3 : 'PASS',
     '規則4大小推薦': picks.rule4
   };
-  const mlbHasImportedLine = leagueKey === 'mlb' && hasValue(autoAsianSpread) && !isMlbSkipAsianLine(autoAsianSpread);
-  const mlbHasManualLine = leagueKey === 'mlb' && hasValue(payload['亞洲讓分盤']) && !isMlbSkipAsianLine(payload['亞洲讓分盤']);
-  if (mlbHasImportedLine) {
-    applyMlbAsianSelectionToPayload(payload, payload['亞洲讓分盤']);
-    enforceMlbSelectedLineRuleScope(payload, payload['亞洲讓分盤']);
-  } else if (leagueKey === 'mlb') {
-    payload['亞洲讓分盤'] = '';
-    payload['亞洲盤口來源'] = 'Playsport未匯入';
-    payload['規則1讓分推薦'] = 'PASS';
-    payload['規則2讓分推薦'] = 'PASS';
-    payload['規則3讓分推薦'] = 'PASS';
+  const mlbHasImportedLine = leagueKey === 'mlb' && hasValue(payload['亞洲讓分盤']) && !isMlbSkipAsianLine(payload['亞洲讓分盤']);
+  const mlbHasManualLine = mlbHasImportedLine;
+  if (leagueKey === 'mlb') {
+    payload['亞洲讓分盤'] = picks.modelAsianLine || '模型盤口';
+    payload['亞洲盤口來源'] = '模型盤口A∪C去重';
+    payload['MLB模型命中'] = picks.modelHitTag || '';
+    payload['MLB模型盤口分數'] = picks.modelStrengthText || '';
   }
 
   const hasAnyPickKeys = leagueKey === 'mlb'
@@ -2713,16 +2709,16 @@ function buildNear10Card(leagueName, leagueKey, event, teamStatsMap, playSportMa
   );
   // MLB 有 Playsport 匯入亞洲盤口時才正式送出隊名與輸贏口徑。
   const shouldWrite = leagueKey === 'mlb'
-    ? ((mlbHasManualLine && hasAnyPick) || finalFieldsChanged)
+    ? (hasAnyPick || finalFieldsChanged)
     : (hasAnyPick || finalFieldsChanged);
   if (shouldWrite) {
     savePickResultLocal(payload);
     syncQueue = syncQueue.then(() => syncResultToCloud(payload)).catch(err => { console.warn('syncQueue error', err); });
   }
 
-  // MLB 必須先匯入 Playsport 亞洲盤口並符合規則才顯示。
+  // MLB 使用模型盤口 A∪C 去重，符合規則就顯示。
   if (!hasDisplayPick) return null;
-  if (leagueKey === 'mlb' && mlbHasImportedLine) {
+  if (leagueKey === 'mlb' && hasAnyPick) {
     upsertMlbFixedPickRow(payload, gameId, payload['亞洲讓分盤']);
   }
 
@@ -2920,13 +2916,13 @@ async function loadGames(offsetDays) {
 
     if (!totalMatches) {
       const targetLabel = targetTaipeiDateKey;
-      near10ContentEl.innerHTML = `<div class="card match muted">${targetLabel} 沒有符合近10規則與 Playsport 亞洲盤口的場次。</div>`;
+      near10ContentEl.innerHTML = `<div class="card match muted">${targetLabel} 沒有符合近10規則與 MLB A∪C 去重模型盤口的場次。</div>`;
     } else if (!filledRows) {
       near10ContentEl.insertAdjacentHTML('afterbegin', `<div class="note">賽程有抓到，但近期得失分仍為空白。這通常代表瀏覽器把外部資料請求擋住了。</div>`);
     }
     if (!near10ContentEl.children.length) {
       const targetLabel = targetTaipeiDateKey;
-      near10ContentEl.innerHTML = `<div class="card match muted">${targetLabel} 沒有符合近10規則與 Playsport 亞洲盤口的資料。</div>`;
+      near10ContentEl.innerHTML = `<div class="card match muted">${targetLabel} 沒有符合近10規則與 MLB A∪C 去重模型盤口的資料。</div>`;
     }
 
     const mlbWasSelected = leagues.some(conf => conf.key === 'mlb');
@@ -2955,6 +2951,222 @@ nbaToggle.addEventListener('change', ()=>{ loadGames(currentOffsetDays); if (!st
 mlbToggle.addEventListener('change', ()=>{ loadGames(currentOffsetDays); if (!statsPage.classList.contains('hidden')) updateRecordSummary(); });
 if (near10TabBtn) near10TabBtn.addEventListener('click', ()=>setActivePage('near10'));
 statsTabBtn.addEventListener('click', ()=>setActivePage('stats'));
+
+
+/* ===== MLB A∪C 去重模型盤口覆蓋版｜不用 Playsport ===== */
+function isFiniteNum(v) { return v !== null && v !== undefined && Number.isFinite(Number(v)); }
+function betweenClosed(v, a, b) { return isFiniteNum(v) && Number(v) >= a && Number(v) <= b; }
+function betweenHalfOpen(v, a, b) { return isFiniteNum(v) && Number(v) >= a && Number(v) < b; }
+function getMlbModelMetrics(left, right) {
+  const awayNet = left.netAll;
+  const homeNet = right.netAll;
+  const awayPace = left.sumAll;
+  const homePace = right.sumAll;
+  const awayPf = left.avgAll ? Number(left.avgAll.pf) : null;
+  const awayPa = left.avgAll ? Number(left.avgAll.pa) : null;
+  const homePf = right.avgAll ? Number(right.avgAll.pf) : null;
+  const homePa = right.avgAll ? Number(right.avgAll.pa) : null;
+  const expAway = (isFiniteNum(awayPf) && isFiniteNum(homePa)) ? (awayPf + homePa) / 2 : null;
+  const expHome = (isFiniteNum(homePf) && isFiniteNum(awayPa)) ? (homePf + awayPa) / 2 : null;
+  const expDiffHome = (isFiniteNum(expHome) && isFiniteNum(expAway)) ? expHome - expAway : null;
+  const netDiffHome = (isFiniteNum(homeNet) && isFiniteNum(awayNet)) ? Number(homeNet) - Number(awayNet) : null;
+  const paceDiffHome = (isFiniteNum(homePace) && isFiniteNum(awayPace)) ? Number(homePace) - Number(awayPace) : null;
+  const strength = (isFiniteNum(expDiffHome) && isFiniteNum(netDiffHome) && isFiniteNum(paceDiffHome))
+    ? 1.25 * Number(expDiffHome) + 0.25 * Number(netDiffHome) + 0.08 * Number(paceDiffHome)
+    : null;
+  const favoriteSide = isFiniteNum(strength) ? (Number(strength) >= 0 ? 'right' : 'left') : '';
+  const underdogSide = favoriteSide === 'right' ? 'left' : (favoriteSide === 'left' ? 'right' : '');
+  const favoriteName = favoriteSide === 'right' ? right.name : (favoriteSide === 'left' ? left.name : '');
+  const underdogName = underdogSide === 'right' ? right.name : (underdogSide === 'left' ? left.name : '');
+  const favoritePace = favoriteSide === 'right' ? homePace : awayPace;
+  const underdogPace = underdogSide === 'right' ? homePace : awayPace;
+  const favoriteNet = favoriteSide === 'right' ? homeNet : awayNet;
+  const underdogNet = underdogSide === 'right' ? homeNet : awayNet;
+  const favoritePaceDiff = (isFiniteNum(favoritePace) && isFiniteNum(underdogPace)) ? Number(favoritePace) - Number(underdogPace) : null;
+  const favoriteNetDiff = (isFiniteNum(favoriteNet) && isFiniteNum(underdogNet)) ? Number(favoriteNet) - Number(underdogNet) : null;
+  const netSum = (isFiniteNum(homeNet) && isFiniteNum(awayNet)) ? Number(homeNet) + Number(awayNet) : null;
+  const paceSum = (isFiniteNum(homePace) && isFiniteNum(awayPace)) ? Number(homePace) + Number(awayPace) : null;
+  const absExpDiff = isFiniteNum(expDiffHome) ? Math.abs(Number(expDiffHome)) : null;
+  const absStrength = isFiniteNum(strength) ? Math.abs(Number(strength)) : null;
+  let lineType = '';
+  if (betweenHalfOpen(absExpDiff, 0, 1.8)) lineType = '1-50%';
+  else if (betweenClosed(absExpDiff, 1.8, 3.2)) lineType = '1+50%';
+  const modelAsianLine = favoriteSide === 'right'
+    ? (lineType ? `主${lineType}` : '模型盤口')
+    : (favoriteSide === 'left' && lineType ? `客${lineType}` : '模型盤口');
+  return { awayNet, homeNet, awayPace, homePace, expAway, expHome, expDiffHome, netDiffHome, paceDiffHome, strength, absStrength, absExpDiff, favoriteSide, underdogSide, favoriteName, underdogName, favoritePace, underdogPace, favoriteNet, underdogNet, favoritePaceDiff, favoriteNetDiff, netSum, paceSum, lineType, modelAsianLine };
+}
+function evalMlbModelA(metrics, near10Pattern, totalLine) {
+  const hits = [];
+  if (!metrics.favoriteSide || !metrics.lineType) return hits;
+  if (
+    near10Pattern === '一正一負' && metrics.lineType === '1-50%' &&
+    betweenClosed(metrics.favoriteNet, 0.0, 2.3) &&
+    betweenClosed(metrics.favoritePaceDiff, -2.6, 5.6) &&
+    !(betweenHalfOpen(metrics.underdogNet, -1.0, 0.0))
+  ) hits.push({ key:'A-R1', label:'A-R1｜模型1-50｜買受讓方', pick:`${metrics.underdogName} 受讓` });
+  if (
+    near10Pattern === '一正一負' && metrics.lineType === '1+50%' &&
+    betweenClosed(metrics.favoriteNetDiff, 1.0, 2.8) &&
+    betweenClosed(metrics.favoritePace, 7.5, 12.0) &&
+    (!isFiniteNum(totalLine) || betweenClosed(totalLine, 7.0, 10.0))
+  ) hits.push({ key:'A-R2', label:'A-R2｜模型1+50｜買讓分方', pick:`${metrics.favoriteName} 讓分` });
+  if (
+    near10Pattern === '雙正分' && metrics.lineType === '1-50%' &&
+    metrics.favoriteSide === 'right' &&
+    betweenClosed(metrics.absStrength, 0.0, 1.5)
+  ) hits.push({ key:'A-R3', label:'A-R3｜雙正分模型1-50｜客隊受讓', pick:`${metrics.underdogName} 受讓` });
+  return hits;
+}
+function evalMlbModelC(metrics, near10Pattern, totalLine) {
+  const hits = [];
+  if (!metrics.favoriteSide || !metrics.lineType) return hits;
+  if (
+    near10Pattern === '一正一負' && metrics.lineType === '1-50%' &&
+    betweenClosed(metrics.favoritePace, 10.7, 11.8) &&
+    !(betweenHalfOpen(metrics.underdogNet, -1.0, 0.0))
+  ) hits.push({ key:'C-R1', label:'C-R1｜模型1-50｜買受讓方', pick:`${metrics.underdogName} 受讓` });
+  if (
+    near10Pattern === '一正一負' && metrics.lineType === '1+50%' &&
+    betweenClosed(metrics.favoriteNetDiff, 1.0, 2.5) &&
+    betweenClosed(metrics.favoritePace, 7.5, 12.0) &&
+    (!isFiniteNum(totalLine) || betweenClosed(totalLine, 7.0, 10.0))
+  ) hits.push({ key:'C-R2', label:'C-R2｜模型1+50｜買讓分方', pick:`${metrics.favoriteName} 讓分` });
+  if (
+    near10Pattern === '雙正分' && metrics.lineType === '1-50%' &&
+    metrics.favoriteSide === 'right' &&
+    betweenClosed(metrics.favoriteNet, 0.5, 3.9) &&
+    betweenClosed(metrics.absStrength, 0.09, 3.29)
+  ) hits.push({ key:'C-R3', label:'C-R3｜雙正分模型1-50｜客隊受讓', pick:`${metrics.underdogName} 受讓` });
+  return hits;
+}
+function dedupeMlbModelHits(hits) {
+  const map = new Map();
+  hits.forEach(hit => {
+    if (!hit?.pick || hit.pick === 'PASS') return;
+    const prev = map.get(hit.pick) || { pick:hit.pick, labels:[], sources:new Set() };
+    prev.labels.push(hit.label || hit.key || '模型命中');
+    if (String(hit.key || '').startsWith('A-')) prev.sources.add('A');
+    if (String(hit.key || '').startsWith('C-')) prev.sources.add('C');
+    map.set(hit.pick, prev);
+  });
+  return Array.from(map.values()).map(item => ({
+    pick:item.pick,
+    label:item.sources.size >= 2 ? 'A∩C 強訊號｜模型盤口去重' : (item.sources.has('A') ? 'A only｜模型盤口去重' : 'C only｜模型盤口去重'),
+    detail:item.labels.join('、'),
+    sourceTag:Array.from(item.sources).sort().join('+')
+  }));
+}
+function buildMlbHighProfitRulePicks(left, right, market) {
+  const homeNet = right.netAll;
+  const awayNet = left.netAll;
+  const homePace = right.sumAll;
+  const awayPace = left.sumAll;
+  const netDiff = (homeNet !== null && awayNet !== null) ? Math.abs(homeNet - awayNet) : null;
+  const paceDiff = (homePace !== null && awayPace !== null) ? Math.abs(homePace - awayPace) : null;
+  const near10Pattern = getNear10Pattern(homeNet, awayNet);
+  const totalLine = market?.total !== null && market?.total !== undefined ? Number(market.total) : null;
+  const metrics = getMlbModelMetrics(left, right);
+  const hitsA = evalMlbModelA(metrics, near10Pattern, totalLine);
+  const hitsC = evalMlbModelC(metrics, near10Pattern, totalLine);
+  const deduped = dedupeMlbModelHits([...hitsA, ...hitsC]);
+  const picks = deduped.map(x => x.pick);
+  return {
+    rule1:picks[0] || 'PASS',
+    rule2:picks[1] || 'PASS',
+    rule3:picks[2] || 'PASS',
+    rule4:'PASS',
+    netDiff,
+    paceDiff,
+    netSum:metrics.netSum,
+    netAvg:isFiniteNum(metrics.netSum) ? metrics.netSum / 2 : null,
+    paceSum:metrics.paceSum,
+    favoritePaceDiff:metrics.favoritePaceDiff,
+    favoriteNetDiff:metrics.favoriteNetDiff,
+    homeNet,
+    awayNet,
+    homePace,
+    awayPace,
+    near10Pattern,
+    modelHits:deduped,
+    modelAsianLine:metrics.modelAsianLine,
+    modelMarketText:`${metrics.modelAsianLine || '模型盤口'}｜強度${isFiniteNum(metrics.strength) ? round1(metrics.strength) : '無'}｜預估差${isFiniteNum(metrics.absExpDiff) ? round1(metrics.absExpDiff) : '無'}`,
+    modelHitTag:deduped.map(x => x.sourceTag).join('|'),
+    modelStrengthText:isFiniteNum(metrics.strength) ? round1(metrics.strength) : ''
+  };
+}
+function getRecommendationItemsFromPayload(payload, leftName, rightName) {
+  const isMlb = String(payload?.['聯盟'] || '').toUpperCase() === 'MLB';
+  if (!isMlb) {
+    return [
+      ['NBA N1｜一正一負｜讓分盤3.5～7.5｜節奏差≥10｜只買主隊讓分', formatRulePickForDisplay(payload['規則1讓分推薦'], leftName, rightName)],
+      ['NBA N4｜雙正分｜大小218.5～230.5｜受讓方節奏230～245｜只買主隊讓分', formatRulePickForDisplay(payload['規則2讓分推薦'], leftName, rightName)],
+      ['NBA N5｜雙負分｜讓分盤≥7.5｜讓分方淨值≥-2.5｜只買主隊讓分', formatRulePickForDisplay(payload['規則3讓分推薦'], leftName, rightName)],
+      ['NBA N2｜一正一負｜讓分盤12.5～15.5｜讓分方節奏190～230｜買大分', payload['規則3大小推薦'] || 'PASS'],
+      ['NBA N3｜一正一負｜讓分盤0～3.5｜讓分方節奏230～250｜買小分', payload['規則4大小推薦'] || 'PASS']
+    ].filter(([, pick]) => pick && pick !== 'PASS');
+  }
+  const raw = [payload['規則1讓分推薦'], payload['規則2讓分推薦'], payload['規則3讓分推薦']].filter(p => p && p !== 'PASS');
+  const seen = new Set();
+  const out = [];
+  raw.forEach((pick, idx) => {
+    if (seen.has(pick)) return;
+    seen.add(pick);
+    const tag = String(payload?.['MLB模型命中'] || '').includes('A+C') ? 'A∩C 強訊號' : 'A∪C 去重';
+    out.push([`MLB ${tag}｜模型盤口替代`, formatRulePickForDisplay(pick, leftName, rightName)]);
+  });
+  return out;
+}
+function buildRecommendationDisplayBodyHtml(payload, leftName, rightName) {
+  const items = getRecommendationItemsFromPayload(payload, leftName, rightName);
+  if (!items.length) return '';
+  const marketText = String(payload?.['Playsport盤口'] || payload?.['亞洲讓分盤'] || '模型盤口A∪C去重');
+  const debugText = `命中：${items.map(([label]) => label).join('、')}｜${marketText}`;
+  const pickHtml = `<div class="bet-pick-list">${items.map(([label, pick]) => `<div class="bet-pick-item">${escapeHtml(label)}：${escapeHtml(pick)}</div>`).join('')}</div>`;
+  return `${pickHtml}<div class="rule-debug">${escapeHtml(debugText)}</div>`;
+}
+function getMlbSelectedPickTexts(payload) {
+  const texts = [];
+  const seen = new Set();
+  [payload?.['規則1讓分推薦'], payload?.['規則2讓分推薦'], payload?.['規則3讓分推薦']].forEach(pick => {
+    const s = String(pick || 'PASS');
+    if (!s || s === 'PASS' || seen.has(s)) return;
+    seen.add(s);
+    texts.push(`A∪C去重：${s}`);
+  });
+  return texts;
+}
+function buildMlbManualInlineCellHtml(gameId, side) {
+  const payload = mlbPayloadByGameId.get(String(gameId)) || {};
+  const line = String(payload['亞洲讓分盤'] || '模型盤口').trim();
+  const raw = String(payload['Playsport盤口'] || '').trim();
+  return `
+    <div class="mlb-manual-box mlb-manual-inline" data-game-id="${escapeHtml(gameId)}">
+      <div class="mlb-inline-market-label">${side}盤｜模型替代</div>
+      <div class="mlb-auto-market-cell">
+        <div class="mlb-auto-market-main">${escapeHtml(line.replace('%',''))}</div>
+        <div class="mlb-auto-market-sub">${escapeHtml(raw || 'A∪C 去重，不抓外部盤口')}</div>
+      </div>
+    </div>`;
+}
+function getMlbManualStatusText(payload, gameId) {
+  const line = payload?.['亞洲讓分盤'] || mlbPayloadByGameId.get(String(gameId))?.['亞洲讓分盤'] || '模型盤口';
+  return `模型盤口A∪C去重：${String(line).replace('%','')}｜已自動判斷`;
+}
+async function fetchPlaySportAsianMarkets(confKey, offsetDays) {
+  setPlaySportStatus('MLB 已改用模型盤口 A∪C 去重，不抓 Playsport', 'status-good');
+  return [];
+}
+function startPlaySportBackgroundRetry(offsetDays) {
+  setPlaySportStatus('MLB 已改用模型盤口 A∪C 去重，不需背景重試', 'status-good');
+}
+function stopPlaySportBackgroundRetry() {
+  playSportBackgroundRetryToken += 1;
+  if (playSportBackgroundRetryTimer) {
+    clearTimeout(playSportBackgroundRetryTimer);
+    playSportBackgroundRetryTimer = null;
+  }
+}
 
 setActivePage('near10');
 loadGames(0);
