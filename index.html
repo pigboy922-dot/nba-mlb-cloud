@@ -25,16 +25,23 @@
     .title { font-size:18px; font-weight:800; line-height:1.35; }
     .sub { color:var(--muted); font-size:13px; margin-top:2px; }
     .tag { display:inline-block; border:1px solid #d9e0d8; background:#f7f8f3; border-radius:999px; padding:5px 10px; font-size:12px; color:#42556a; font-weight:700; }
-    .mlb-fixed-pick-panel { position:fixed; top:78px; right:12px; z-index:20; width:310px; max-height:72vh; overflow:auto; background:rgba(252,252,248,.98); border:1px solid var(--line); border-radius:16px; box-shadow:0 10px 28px rgba(36,52,71,.12); padding:10px 11px; display:none; }
-    .mlb-fixed-pick-head { font-size:13px; font-weight:900; color:#34546f; margin-bottom:8px; display:flex; justify-content:space-between; gap:8px; align-items:center; }
-    .mlb-fixed-pick-reset { border:0; border-radius:10px; padding:6px 9px; font-size:12px; line-height:1; background:#e8edf1; color:#355067; cursor:pointer; font-weight:900; }
-    .mlb-fixed-pick-row { border-top:1px solid #e6ebe3; padding:8px 0; }
-    .mlb-fixed-pick-row:first-of-type { border-top:0; }
-    .mlb-fixed-pick-title { font-size:12px; font-weight:800; color:#2e465c; margin-bottom:4px; }
-    .mlb-fixed-pick-meta { font-size:11px; color:#667085; margin-bottom:3px; }
-    .mlb-fixed-pick-text { font-size:15px; line-height:1.35; font-weight:900; color:#b91c1c; }
-    .mlb-fixed-pick-meta b { color:#34546f; }
-    @media (max-width: 1120px) { .mlb-fixed-pick-panel { position:static; width:auto; max-height:none; margin:0 14px 12px; } }
+    .mlb-fixed-pick-panel { position:fixed; top:78px; right:12px; z-index:20; width:340px; max-height:76vh; overflow:auto; background:rgba(248,250,252,.98); border:1px solid #d7dee8; border-radius:14px; box-shadow:0 16px 36px rgba(36,52,71,.16); padding:10px; display:none; }
+    .mlb-fixed-pick-head { position:sticky; top:-10px; z-index:1; margin:-10px -10px 10px; padding:11px 12px; background:#2e465c; color:#fff; font-size:14px; font-weight:900; display:flex; justify-content:space-between; gap:8px; align-items:center; }
+    .mlb-fixed-pick-count { display:inline-flex; align-items:center; justify-content:center; min-width:26px; height:22px; margin-left:6px; border-radius:999px; background:#f4f7fb; color:#2e465c; font-size:12px; font-weight:900; }
+    .mlb-fixed-pick-reset { border:1px solid rgba(255,255,255,.35); border-radius:9px; padding:6px 9px; font-size:12px; line-height:1; background:rgba(255,255,255,.14); color:#fff; cursor:pointer; font-weight:900; }
+    .mlb-fixed-pick-row { border:1px solid #dde5ee; border-radius:12px; background:#fff; padding:10px; margin-top:9px; }
+    .mlb-fixed-pick-row:first-of-type { margin-top:0; }
+    .mlb-fixed-pick-title { font-size:13px; font-weight:900; color:#26384c; line-height:1.35; margin-bottom:7px; overflow-wrap:anywhere; }
+    .mlb-fixed-pick-meta { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+    .mlb-fixed-pick-pill { display:inline-flex; align-items:center; min-height:22px; border-radius:999px; padding:3px 8px; font-size:11px; line-height:1.2; font-weight:900; background:#eef2f6; color:#34546f; }
+    .mlb-fixed-pick-pill.line-plus { background:#ecfdf3; color:#166534; }
+    .mlb-fixed-pick-pill.line-minus { background:#fff7ed; color:#9a3412; }
+    .mlb-fixed-pick-pill.addon { background:#fee2e2; color:#b91c1c; }
+    .mlb-fixed-pick-pill.source { background:#eaf0f7; color:#355067; }
+    .mlb-fixed-pick-text { border-top:1px solid #edf1f5; padding-top:8px; margin-top:8px; }
+    .mlb-fixed-pick-main { font-size:19px; line-height:1.28; font-weight:900; color:#b91c1c; overflow-wrap:anywhere; }
+    .mlb-fixed-pick-sub { margin-top:4px; font-size:12px; line-height:1.35; font-weight:800; color:#5f6f82; overflow-wrap:anywhere; }
+    @media (max-width: 1120px) { .mlb-fixed-pick-panel { position:static; width:auto; max-height:none; margin:0 14px 12px; } .mlb-fixed-pick-head { position:static; } }
     .error { color:#b91c1c; background:#fef2f2; border:1px solid #fecaca; padding:11px 13px; border-radius:12px; }
     .note { color:#92400e; background:#fffbeb; border:1px solid #fde68a; padding:11px 13px; border-radius:12px; }
     .versus-card { margin-top:10px; border:1px solid var(--line); border-radius:18px; overflow:hidden; background:#f7f8f2; }
@@ -1747,6 +1754,39 @@ function resetMlbFixedPickRowsForCurrentUpdate() {
   writeMlbFixedPickRows([]);
   updateMlbFixedPickPanel();
 }
+function parseFixedPickText(text) {
+  const raw = String(text || '').trim();
+  const parts = raw.split('：');
+  const pick = parts.length > 1 ? parts.pop().trim() : raw;
+  const labels = parts.join('：').split('｜').map(x => x.trim()).filter(Boolean);
+  return { pick, labels };
+}
+function fixedPickLineClass(text) {
+  const s = String(text || '');
+  if (s.includes('1+50') || s.includes('1+')) return 'line-plus';
+  if (s.includes('1-50') || s.includes('1-')) return 'line-minus';
+  return '';
+}
+function buildFixedPickPills(row, parsedPicks) {
+  const seen = new Set();
+  const pills = [];
+  const add = (label, cls='') => {
+    const text = String(label || '').trim();
+    if (!text || seen.has(text)) return;
+    seen.add(text);
+    pills.push(`<span class="mlb-fixed-pick-pill ${cls}">${escapeHtml(text)}</span>`);
+  };
+  add(row.asianLine || '', fixedPickLineClass(row.asianLine));
+  parsedPicks.forEach(item => {
+    item.labels.forEach(label => {
+      if (label.includes('一般場')) add(label, fixedPickLineClass(label));
+      else if (label.includes('高品質') || label.includes('加注')) add(label, 'addon');
+    });
+  });
+  if (row.source) add(row.source, 'source');
+  if (row.time) add(row.time);
+  return pills.join('');
+}
 function getMlbSelectedPickTexts(payload) {
   const texts = [];
   const rule1 = String(payload?.['規則1讓分推薦'] || 'PASS');
@@ -1767,14 +1807,21 @@ function updateMlbFixedPickPanel() {
   }
   mlbFixedPickPanelEl.style.display = 'block';
   mlbFixedPickPanelEl.innerHTML = `
-    <div class="mlb-fixed-pick-head"><span>推薦總欄｜${rows.length} 場</span><button class="mlb-fixed-pick-reset" type="button" onclick="clearMlbFixedPickRows()">清空</button></div>
-    ${rows.map(row => `
-      <div class="mlb-fixed-pick-row">
-        <div class="mlb-fixed-pick-title">${escapeHtml(row.matchup || '')}</div>
-        <div class="mlb-fixed-pick-meta"><b>${escapeHtml(row.asianLine || '')}</b>${row.source ? `｜${escapeHtml(row.source)}` : ''}${row.time ? `｜${escapeHtml(row.time)}` : ''}</div>
-        ${(row.picks || []).map(p => `<div class="mlb-fixed-pick-text">${escapeHtml(p)}</div>`).join('')}
-      </div>
-    `).join('')}`;
+    <div class="mlb-fixed-pick-head"><span>推薦總欄<span class="mlb-fixed-pick-count">${rows.length}</span></span><button class="mlb-fixed-pick-reset" type="button" onclick="clearMlbFixedPickRows()">清空</button></div>
+    ${rows.map(row => {
+      const parsedPicks = (row.picks || []).map(parseFixedPickText);
+      return `
+        <div class="mlb-fixed-pick-row">
+          <div class="mlb-fixed-pick-title">${escapeHtml(row.matchup || '')}</div>
+          <div class="mlb-fixed-pick-meta">${buildFixedPickPills(row, parsedPicks)}</div>
+          ${parsedPicks.map(item => `
+            <div class="mlb-fixed-pick-text">
+              <div class="mlb-fixed-pick-main">${escapeHtml(item.pick)}</div>
+              <div class="mlb-fixed-pick-sub">${escapeHtml(item.labels.filter(label => !label.includes('一般場') && !label.includes('高品質') && !label.includes('加注')).join('｜') || '模型推薦')}</div>
+            </div>
+          `).join('')}
+        </div>`;
+    }).join('')}`;
 }
 function upsertMlbFixedPickRow(payload, gameId, type) {
   const rows = readMlbFixedPickRows().filter(row => String(row.gameId || '') !== String(gameId));
@@ -3173,10 +3220,8 @@ function evalMlbModelA(metrics, near10Pattern, totalLine) {
     !v2BlockedAR1
   ) hits.push({ key:'A-R1', label:'A-R1｜模型1-50｜買受讓方｜V2過濾後', pick:`${metrics.underdogName} 受讓` });
   if (
-    near10Pattern === '一正一負' && metrics.lineType === '1+50%' &&
-    betweenClosed(metrics.favoriteNetDiff, 1.0, 2.8) &&
-    betweenClosed(metrics.favoritePace, 7.5, 12.0) &&
-    (!isFiniteNum(totalLine) || betweenClosed(totalLine, 7.0, 10.0))
+    metrics.lineType === '1+50%' &&
+    metrics.favoriteName
   ) hits.push({ key:'A-R2', label:'A-R2｜模型1+50｜買讓分方', pick:`${metrics.favoriteName} 讓分` });
   if (
     near10Pattern === '雙正分' && metrics.lineType === '1-50%' &&
@@ -3194,10 +3239,8 @@ function evalMlbModelC(metrics, near10Pattern, totalLine) {
     !(betweenHalfOpen(metrics.underdogNet, -1.0, 0.0))
   ) hits.push({ key:'C-R1', label:'C-R1｜模型1-50｜買受讓方', pick:`${metrics.underdogName} 受讓` });
   if (
-    near10Pattern === '一正一負' && metrics.lineType === '1+50%' &&
-    betweenClosed(metrics.favoriteNetDiff, 1.0, 2.5) &&
-    betweenClosed(metrics.favoritePace, 7.5, 12.0) &&
-    (!isFiniteNum(totalLine) || betweenClosed(totalLine, 7.0, 10.0))
+    metrics.lineType === '1+50%' &&
+    metrics.favoriteName
   ) hits.push({ key:'C-R2', label:'C-R2｜模型1+50｜買讓分方', pick:`${metrics.favoriteName} 讓分` });
   if (
     near10Pattern === '雙正分' && metrics.lineType === '1-50%' &&
@@ -3244,7 +3287,12 @@ function buildMlbHighProfitRulePicks(left, right, market) {
     metrics.lineType === '1-50%' &&
     betweenClosed(metrics.underdogPace, 5.2, 11.5) &&
     betweenClosed(metrics.netSum, -3.2, 2.6);
-  const deduped = dedupeMlbModelHits(sprintGate ? [...hitsA, ...hitsC] : []);
+  const r2AddOnGate =
+    metrics.lineType === '1+50%' &&
+    betweenClosed(metrics.strength, -3.16, 5.84);
+  const onePlusHits = [...hitsA, ...hitsC].filter(hit => String(hit?.key || '').endsWith('-R2'));
+  const sprintHits = [...hitsA, ...hitsC].filter(hit => !String(hit?.key || '').endsWith('-R2'));
+  const deduped = dedupeMlbModelHits([...onePlusHits, ...(sprintGate ? sprintHits : [])]);
   const picks = deduped.map(x => x.pick);
   return {
     rule1:picks[0] || 'PASS',
@@ -3265,10 +3313,10 @@ function buildMlbHighProfitRulePicks(left, right, market) {
     near10Pattern,
     modelHits:deduped,
     modelAsianLine:metrics.modelAsianLine,
-    modelMarketText:`${metrics.modelAsianLine || '模型盤口'}｜強度${isFiniteNum(metrics.strength) ? round1(metrics.strength) : '無'}｜預估差${isFiniteNum(metrics.absExpDiff) ? round1(metrics.absExpDiff) : '無'}｜衝刺閘門${sprintGate ? '通過' : '未通過'}${r1AddOnGate ? '｜R1加注區' : ''}`,
+    modelMarketText:`${metrics.modelAsianLine || '模型盤口'}｜強度${isFiniteNum(metrics.strength) ? round1(metrics.strength) : '無'}｜預估差${isFiniteNum(metrics.absExpDiff) ? round1(metrics.absExpDiff) : '無'}｜${metrics.lineType === '1+50%' ? '1+50一般場全收' : `衝刺閘門${sprintGate ? '通過' : '未通過'}`}${r1AddOnGate ? '｜R1加注區' : ''}${r2AddOnGate ? '｜1+50加注區' : ''}`,
     modelHitTag:deduped.map(x => x.sourceTag).join('|'),
     modelStrengthText:isFiniteNum(metrics.strength) ? round1(metrics.strength) : '',
-    mlbAddOnTag:(sprintGate && picks.length && r1AddOnGate) ? 'R1高品質加注' : ''
+    mlbAddOnTag:(picks.length && r1AddOnGate) ? 'R1高品質加注' : ((picks.length && r2AddOnGate) ? '1+50高品質加注' : '')
   };
 }
 function getRecommendationItemsFromPayload(payload, leftName, rightName) {
@@ -3298,7 +3346,9 @@ function getRecommendationItemsFromPayload(payload, leftName, rightName) {
     seen.add(pick);
     const tag = String(payload?.['MLB模型命中'] || '').includes('A+C') ? 'A∩C 強訊號' : 'A∪C V2';
     const addOn = String(payload?.['MLB加注標籤'] || '').trim();
-    out.push([`MLB ${tag}${addOn ? '｜' + addOn : ''}｜模型盤口替代`, formatRulePickForDisplay(pick, leftName, rightName)]);
+    const line = String(payload?.['亞洲讓分盤'] || '').trim();
+    const lineTag = line.includes('1+50') ? '1+50一般場' : (line.includes('1-50') ? '1-50一般場' : '模型盤口');
+    out.push([`MLB ${lineTag}｜${tag}${addOn ? '｜' + addOn : ''}｜模型盤口替代`, formatRulePickForDisplay(pick, leftName, rightName)]);
   });
   return out;
 }
@@ -3318,7 +3368,9 @@ function getMlbSelectedPickTexts(payload) {
     if (!s || s === 'PASS' || seen.has(s)) return;
     seen.add(s);
     const addOn = String(payload?.['MLB加注標籤'] || '').trim();
-    texts.push(`A∪C V2${addOn ? '｜' + addOn : ''}：${s}`);
+    const line = String(payload?.['亞洲讓分盤'] || '').trim();
+    const lineTag = line.includes('1+50') ? '1+50一般場' : (line.includes('1-50') ? '1-50一般場' : '模型盤口');
+    texts.push(`${lineTag}｜A∪C V2${addOn ? '｜' + addOn : ''}：${s}`);
   });
   return texts;
 }
@@ -3367,7 +3419,7 @@ setInterval(() => {
 }, 60000);
 
 
-<!-- MLB 全打版：R1 869風控版；R2 全新版B（1+50，淨值差1.0~2.5，讓分方節奏7.5~12.0，大小7.0~10.0）；R3 風控版（1-50，淨值和<4.5，排除受讓方節奏10.1~11.5）；不做每日最多2限制，符合規則全部正式出。 -->
+<!-- MLB 全打版：R1/R3維持1-50受讓風控；R2改為模型1+50一般場全收買讓分方，strength -3.16~5.84 標記 1+50高品質加注；不做每日最多2限制，符合規則全部正式出。 -->
 </script>
 </body>
 </html>
