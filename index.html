@@ -372,7 +372,7 @@
       <button class="btn-secondary" id="tomorrowBtn">更新明天</button>
       <input class="api-key-input" id="sgoApiKeyInput" type="password" placeholder="SportsGameOdds API Key">
       <button class="btn-secondary" id="saveSgoApiKeyBtn" type="button">儲存初盤Key</button>
-      <div class="window-note hidden" id="windowNote">目前顯示：NBA 精砍版（N1/N2/N3/N4/N5 + SUP6/SUP7/SUP8/SUP9；SUP9已接ESPN/SBR初盤輔助；已砍低效拖累區間）；MLB 完整944攻擊版優先，完全無推薦時才補 MLBA003744_FINAL_933（1333母池、低分20%、每日Top3、排除net_diff -1~1）；雙重賽第二場起不判斷</div>
+      <div class="window-note hidden" id="windowNote">目前顯示：NBA 精砍版（N1/N2/N3/N4/N5 + SUP6/SUP7/SUP8/SUP9；SUP9已接ESPN/SBR初盤輔助；已砍低效拖累區間）；MLB 完整944攻擊版優先，完全無推薦時才補 MLBA003744_FINAL_933（1333母池、低分20%、每日Top3、排除net_diff -1~1）；雙重賽整組不判斷</div>
       <div class="status muted" id="status">尚未更新</div>
       <div class="status muted" id="cloudStatus">雲端寫入：待命</div>
       <div class="status muted" id="playsportStatus">Playsport盤口：待命</div>
@@ -1140,29 +1140,33 @@ function splitMlbDoubleHeaderEvents(events, confKey='mlb') {
     if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta - tb;
     return String(getEventStableKey(a)).localeCompare(String(getEventStableKey(b)));
   });
-  const seenTeamFirstGame = new Map();
+  const teamGameCounts = new Map();
+  sortedEvents.forEach(event => {
+    getEventTeamIds(event).forEach(id => {
+      teamGameCounts.set(id, (teamGameCounts.get(id) || 0) + 1);
+    });
+  });
   const allowedEvents = [];
   const skippedEvents = [];
 
   sortedEvents.forEach(event => {
     const teamIds = getEventTeamIds(event);
-    const repeatedTeamIds = teamIds.filter(id => seenTeamFirstGame.has(id));
+    const doubleHeaderTeamIds = teamIds.filter(id => (teamGameCounts.get(id) || 0) > 1);
     const key = getEventStableKey(event);
 
-    // MLB 同隊同日第二場起不判斷，避免雙重賽第二戰沿用早場狀態或被第一戰結果污染近10。
-    if (repeatedTeamIds.length) {
+    // MLB 同隊同日兩場以上整組不判斷，避免先發/牛棚/第一場結果污染近10與盤口。
+    if (doubleHeaderTeamIds.length) {
       const teams = getEventTeamNamesForNote(confKey, event);
       skippedEvents.push({
         key,
         event,
         matchup: teams.length >= 2 ? `${teams[0]} vs ${teams[1]}` : (event?.shortName || event?.name || key),
         time: getShortTaipeiTime(event?.date),
-        reason: '雙重賽第二場起不判斷'
+        reason: '雙重賽整組不判斷'
       });
       return;
     }
 
-    teamIds.forEach(id => seenTeamFirstGame.set(id, key));
     allowedEvents.push(event);
   });
 
@@ -3440,7 +3444,7 @@ async function loadGames(offsetDays) {
         const skippedText = mlbDoubleHeaderInfo.skippedEvents
           .map(item => `${item.time ? item.time + ' ' : ''}${item.matchup}`)
           .join('、');
-        near10ContentEl.insertAdjacentHTML('beforeend', `<div class="note">MLB 雙重賽已擋：${escapeHtml(skippedText)}｜第二場起不判斷、不顯示推薦、不寫入雲端。</div>`);
+        near10ContentEl.insertAdjacentHTML('beforeend', `<div class="note">MLB 雙重賽已擋：${escapeHtml(skippedText)}｜整組不判斷、不顯示推薦、不寫入雲端。</div>`);
       }
 
       if (!events.length) {
