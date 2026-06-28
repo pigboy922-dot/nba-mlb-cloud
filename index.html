@@ -372,7 +372,7 @@
       <button class="btn-secondary" id="tomorrowBtn">更新明天</button>
       <input class="api-key-input" id="sgoApiKeyInput" type="password" placeholder="SportsGameOdds API Key">
       <button class="btn-secondary" id="saveSgoApiKeyBtn" type="button">儲存初盤Key</button>
-      <div class="window-note hidden" id="windowNote">目前顯示：NBA 精砍版（N1/N2/N3/N4/N5 + SUP6/SUP7/SUP8/SUP9；SUP9已接ESPN/SBR初盤輔助；已砍低效拖累區間）；MLB 944攻擊版 + 新邏輯運彩盤-1.5甜盤，完全無推薦時才補 MLBA003744_FINAL_933（1333母池、低分20%、每日Top3、排除net_diff -1~1）；雙重賽整組不判斷</div>
+      <div class="window-note hidden" id="windowNote">目前顯示：NBA 精砍版（N1/N2/N3/N4/N5 + SUP6/SUP7/SUP8/SUP9；SUP9已接ESPN/SBR初盤輔助；已砍低效拖累區間）；MLB 944攻擊版 + 新邏輯運彩盤-1.5甜盤，已砍TW低效區間；補空窗受讓策略已停用；雙重賽整組不判斷</div>
       <div class="status muted" id="status">尚未更新</div>
       <div class="status muted" id="cloudStatus">雲端寫入：待命</div>
       <div class="status muted" id="playsportStatus">Playsport盤口：待命</div>
@@ -403,6 +403,7 @@
           <div class="record-pill"><b>規則2 讓分</b><span id="statEdgeTotalRate">週0%｜月0%｜季0%</span></div>
           <div class="record-pill"><b>規則3 讓分/大分</b><span id="statL10SpreadRate">週0%｜月0%｜季0%</span></div>
                     <div class="record-pill"><b>規則4 小分</b><span id="statL10TotalNetRate">週0%｜月0%｜季0%</span></div>
+          <div class="record-pill"><b>MLB新邏輯</b><span id="statMlbNewLogicRate">週0%｜月0%｜季0%</span></div>
                             </div>
         <div class="footer-note" id="statsStatus">統計頁會優先讀雲端，抓不到才改讀本機備援。</div>
       </div>
@@ -437,7 +438,7 @@ const CONFIG = {
   nba: { key:'nba', name:'NBA', sport:'basketball', league:'nba', lookbackDays:40, totalEdge:8, spreadEdge:3.5, highTotal:235 },
   mlb: { key:'mlb', name:'MLB', sport:'baseball', league:'mlb', lookbackDays:25, totalEdge:1.2, spreadEdge:0.8, highTotal:11.5 }
 };
-const APP_BUILD_ID = '2026-06-25 MLB 944 + TW lottery -1.5 new logic';
+const APP_BUILD_ID = '2026-06-28 MLB 944 + TW -1.5 optimized no fallback';
 const MLB_TW_LOTTERY_RUNLINE_SOURCE_LABEL = '新邏輯：運彩盤 -1.5';
 const MLB_TW_LOTTERY_RUNLINE_SOURCE_RE = /新邏輯|甜盤|台彩|運彩|twlottery|lottery|runline|-1\.5/i;
 
@@ -469,13 +470,15 @@ const MODEL_LABELS = {
   '規則1讓分結果':'statEdgeSpreadRate',
   '規則2讓分結果':'statEdgeTotalRate',
   '規則3讓分結果':'statL10SpreadRate',
-  '規則4大小結果':'statL10TotalNetRate'
+  '規則4大小結果':'statL10TotalNetRate',
+  'MLB新邏輯結果':'statMlbNewLogicRate'
 };
 const PICK_RESULT_PAIRS = [
   ['規則1讓分推薦','規則1讓分結果'],
   ['規則2讓分推薦','規則2讓分結果'],
   ['規則3讓分推薦','規則3讓分結果'],
-  ['規則4大小推薦','規則4大小結果']
+  ['規則4大小推薦','規則4大小結果'],
+  ['MLB新邏輯推薦','MLB新邏輯結果']
 ];
 function setActivePage(page) {
   const showNear10 = page !== 'stats';
@@ -615,6 +618,10 @@ function judgePickResultForPayload(event, market, pick, leftName, rightName, pay
   }
   return judgePickResult(event, market, pick, leftName, rightName);
 }
+function judgeMlbTwLotteryRunlineResult(event, pick, leftName, rightName) {
+  if (!pick || pick === 'PASS') return '';
+  return judgeSpreadByScoreAndLine(event, pick, leftName, rightName, 1.5, '');
+}
 function buildCloudPayload(payload) {
   const cloudPayload = Object.fromEntries(Object.entries(payload || {}));
   if (String(cloudPayload['聯盟'] || '').toUpperCase() === 'MLB') {
@@ -626,9 +633,11 @@ function buildCloudPayload(payload) {
       cloudPayload['規則1讓分推薦'] = 'PASS';
       cloudPayload['規則2讓分推薦'] = 'PASS';
       cloudPayload['規則3讓分推薦'] = 'PASS';
+      cloudPayload['MLB新邏輯推薦'] = 'PASS';
       cloudPayload['規則1讓分結果'] = '';
       cloudPayload['規則2讓分結果'] = '';
       cloudPayload['規則3讓分結果'] = '';
+      cloudPayload['MLB新邏輯結果'] = '';
     }
     // MLB 不再因缺少亞洲盤口要求刪列，也不送刪除原因。
     delete cloudPayload['刪除原因'];
@@ -742,6 +751,9 @@ function judgePickResultFromStoredRow(row, event, pickKey) {
   if (isMlb) {
     const rowAwayName = String(row?.客隊 || awayName);
     const rowHomeName = String(row?.主隊 || homeName);
+    if (pickKey === 'MLB新邏輯推薦') {
+      return judgeSpreadByScoreAndLine(event, pick, rowAwayName, rowHomeName, 1.5, '');
+    }
     return judgeSpreadByScoreAndLine(event, pick, rowAwayName, rowHomeName, null, row?.['亞洲讓分盤']);
   }
   const lineForJudge = spreadLine;
@@ -775,7 +787,8 @@ async function backfillPendingResultsForLeague(conf) {
     if (!isMlbBackfill) return pending;
     const asianLine = String(row?.['亞洲讓分盤'] || '').trim();
     const hasStoredAsianLine = hasValue(asianLine) && !isMlbSkipAsianLine(asianLine);
-    return hasStoredAsianLine && pending;
+    const hasNewLogicPick = hasValue(row?.['MLB新邏輯推薦']) && String(row?.['MLB新邏輯推薦']) !== 'PASS';
+    return (hasStoredAsianLine || hasNewLogicPick) && pending;
   });
   let updated = 0;
   for (const row of pendingRows) {
@@ -2189,7 +2202,7 @@ function updateMlbFixedPickPanel() {
   const buyRows = rows.filter(row => row.status !== 'watch');
   const watchRows = rows.filter(row => row.status === 'watch');
   const renderRows = (list, emptyText='') => list.length ? list.map(row => {
-      const displayPicks = row.status === 'watch' ? dedupeMlbWatchCandidateTexts(row.picks || []) : (row.picks || []);
+      const displayPicks = row.status === 'watch' ? dedupeMlbWatchCandidateTexts(row.picks || [], row.asianLine) : (row.picks || []);
       const parsedPicks = displayPicks.map(parseFixedPickText);
       return `
         <div class="mlb-fixed-pick-row ${row.status === 'watch' ? 'is-watch' : ''}">
@@ -2210,10 +2223,25 @@ function updateMlbFixedPickPanel() {
     <div class="mlb-fixed-pick-head watch-head"><span>待觀察<span class="mlb-fixed-pick-count">${watchRows.length}</span></span></div>
     ${renderRows(watchRows, '目前沒有待觀察')}`;
 }
-function dedupeMlbWatchCandidateTexts(picks) {
+function normalizeMlbPendingJudgementText(text, actualLine) {
+  const line = String(actualLine || '').trim();
+  if (!line || isMlbSkipAsianLine(line)) return String(text || '').trim();
+  const raw = String(text || '').trim();
+  const match = raw.match(/^待實盤(受讓|讓分)([^｜：]*)｜(.+?)：(受讓|讓分)方待判斷$/);
+  if (!match || match[1] !== match[4]) return raw;
+  const role = match[1];
+  const expectedLine = match[2] || '';
+  const labels = match[3];
+  return `實盤${line.replace('%','')}｜雙邊候選PASS｜待${role}${expectedLine}｜${labels}：雙邊${role}候選PASS`;
+}
+function dedupeMlbWatchCandidateTexts(picks, actualLine='') {
   const grouped = new Map();
   const passthrough = [];
-  const rawTexts = (picks || []).map(x => String(x || '').trim()).filter(Boolean);
+  const line = String(actualLine || '').trim();
+  const rawTexts = (picks || [])
+    .map(x => normalizeMlbPendingJudgementText(x, line))
+    .map(x => String(x || '').trim())
+    .filter(Boolean);
   const undecidedPendingGroups = new Map();
   rawTexts.forEach(text => {
     const match = text.match(/^待實盤(受讓|讓分)([^｜：]*)｜(.+?)：(.+?)\s+(受讓|讓分)$/);
@@ -2233,7 +2261,11 @@ function dedupeMlbWatchCandidateTexts(picks) {
   undecidedPendingGroups.forEach(item => {
     if (item.teams.size < 2) return;
     item.texts.forEach(text => collapsedPendingTexts.add(text));
-    collapsedPendingOutput.push(`待實盤${item.role}${item.line}｜${item.labels}：${item.role}方待判斷`);
+    if (line && !isMlbSkipAsianLine(line)) {
+      collapsedPendingOutput.push(`實盤${line.replace('%','')}｜雙邊候選PASS｜待${item.role}${item.line}｜${item.labels}：雙邊${item.role}候選PASS`);
+    } else {
+      collapsedPendingOutput.push(`待實盤${item.role}${item.line}｜${item.labels}：${item.role}方待判斷`);
+    }
   });
   rawTexts.forEach(text => {
     if (collapsedPendingTexts.has(text)) return;
@@ -2274,7 +2306,7 @@ function upsertMlbFixedPickRow(payload, gameId, type, options={}) {
     String(row.status || 'buy') === targetStatus
   ));
   const rawPicks = Array.isArray(options.picks) ? options.picks : getMlbSelectedPickTexts(payload);
-  const picks = targetStatus === 'watch' ? dedupeMlbWatchCandidateTexts(rawPicks) : rawPicks;
+  const picks = targetStatus === 'watch' ? dedupeMlbWatchCandidateTexts(rawPicks, type) : rawPicks;
   if (picks.length) {
     rows.push({
       gameId: String(gameId),
@@ -3271,12 +3303,13 @@ function buildNear10Card(leagueName, leagueKey, event, teamStatsMap, playSportMa
   }
   payload['規則2讓分結果'] = judgePickResultForPayload(event, market, payload['規則2讓分推薦'], left.name, right.name, payload);
   payload['規則3讓分結果'] = judgePickResultForPayload(event, market, payload['規則3讓分推薦'], left.name, right.name, payload);
+  payload['MLB新邏輯結果'] = leagueKey === 'mlb' ? judgeMlbTwLotteryRunlineResult(event, payload['MLB新邏輯推薦'], left.name, right.name) : '';
   payload['規則3大小結果'] = judgePickResult(event, market, payload['規則3大小推薦'], left.name, right.name);
   const totalResultMarket = leagueKey === 'mlb' && isFiniteNum(picks.mlbTotalLine) ? { ...market, total:Number(picks.mlbTotalLine) } : market;
   payload['規則4大小結果'] = judgePickResult(event, totalResultMarket, payload['規則4大小推薦'], left.name, right.name);
   const hasDisplayPick = hasAnyPick;
   const gameCompleted = isGameCompleted;
-  const resultKeys = ['規則1讓分結果','規則2讓分結果','規則3讓分結果','規則3大小結果','規則4大小結果'];
+  const resultKeys = ['規則1讓分結果','規則2讓分結果','規則3讓分結果','規則3大小結果','規則4大小結果','MLB新邏輯結果'];
   const resultChanged = resultKeys.some(k => hasValue(payload[k]) && valueChanged(existingPayload?.[k], payload[k]));
   const finalFieldsChanged = gameCompleted && (
     (hasValue(payload['亞洲讓分盤']) && valueChanged(existingPayload?.['亞洲讓分盤'], payload['亞洲讓分盤'])) ||
@@ -3419,6 +3452,8 @@ async function loadGames(offsetDays) {
   currentOffsetDays = offsetDays;
   stopPlaySportBackgroundRetry();
   scoreboardCache.clear();
+  const previousNear10Html = near10ContentEl?.innerHTML || '';
+  const previousFixedRows = readMlbFixedPickRows();
   try {
     setBusy(true);
     resetSyncState();
@@ -3515,7 +3550,6 @@ async function loadGames(offsetDays) {
       }
     }
 
-    if (leagues.some(conf => conf.key === 'mlb')) applyMlbFinalDailyTop3Filter(targetTaipeiDateKey);
     renderRecommendationSummary(recommendationSummaries);
 
     if (!totalMatches) {
@@ -3541,7 +3575,14 @@ async function loadGames(offsetDays) {
   } catch (err) {
     console.error(err);
     renderRecommendationSummary([]);
-    near10ContentEl.innerHTML = `<div class="error">更新失敗。若反覆失敗，多半是瀏覽器或代理暫時擋住外部請求。</div>`;
+    if (previousNear10Html) {
+      near10ContentEl.innerHTML = previousNear10Html;
+      near10ContentEl.insertAdjacentHTML('afterbegin', `<div class="error">本輪更新失敗，已保留上一輪成功畫面。若反覆失敗，多半是瀏覽器或代理暫時擋住外部請求。</div>`);
+    } else {
+      near10ContentEl.innerHTML = `<div class="error">更新失敗。若反覆失敗，多半是瀏覽器或代理暫時擋住外部請求。</div>`;
+    }
+    writeMlbFixedPickRows(previousFixedRows);
+    updateMlbFixedPickPanel();
     statusEl.textContent = '更新失敗';
     near10StatusEl.textContent = '更新失敗';
     if (syncState.success === 0 && syncState.failed === 0) setCloudStatus('本輪未送出', 'status-warn');
@@ -3644,7 +3685,7 @@ function buildMlbMarketInlineCellHtml(gameId, side) {
       </div>
     </div>`;
 }
-/* ===== MLB 亞洲盤口鎖參主推：MLBA003744 優先；944保留為補充候選 ===== */
+/* ===== MLB 944 攻擊版 + TW -1.5；補空窗受讓策略已停用 ===== */
 function getMlb944TotalDecision(metrics, market) {
   const totalLine = isFiniteNum(market?.openTotal) ? Number(market.openTotal) : (isFiniteNum(market?.total) ? Number(market.total) : null);
   const modelTotal = (isFiniteNum(metrics?.expAway) && isFiniteNum(metrics?.expHome)) ? Number(metrics.expAway) + Number(metrics.expHome) : null;
@@ -3818,15 +3859,17 @@ function getMlbTwLotteryRunlineDecision(metrics, market, left, right) {
     betweenClosed(openMlFavoriteOdds, -320, -200) &&
     mlModelAgree &&
     betweenClosed(metrics?.netSum, -8, 0) &&
-    betweenClosed(pickNetDiff, -8, 8),
-    'TW1｜mlFav -320~-200｜ML同模型｜netSum -8~0｜pickNetDiff -8~8'
+    betweenClosed(pickNetDiff, -8, 8) &&
+    !(isFiniteNum(metrics?.strength) && Number(metrics.strength) > 3 && Number(metrics.strength) <= 6),
+    'TW1｜mlFav -320~-200｜ML同模型｜netSum -8~0｜pickNetDiff -8~8｜砍strength 3~6'
   );
   add(
     betweenClosed(favRunLineOdds, -140, -100) &&
     betweenClosed(metrics?.strength, 0, 6) &&
     betweenClosed(openTotal, 8, 9.5) &&
-    betweenClosed(pickNet, -3, 3),
-    'TW2｜favRL -140~-100｜strength 0~6｜openTot 8~9.5｜pickNet -3~3'
+    betweenClosed(pickNet, -3, 3) &&
+    !(isFiniteNum(totalEdgeOver) && Number(totalEdgeOver) >= 0 && Number(totalEdgeOver) < 2),
+    'TW2｜favRL -140~-100｜strength 0~6｜openTot 8~9.5｜pickNet -3~3｜砍totalEdgeOver 0~2'
   );
   add(
     betweenClosed(dogRunLineOdds, -120, 0) &&
@@ -3847,10 +3890,10 @@ function getMlbTwLotteryRunlineDecision(metrics, market, left, right) {
     'TW5｜favRL 0~120｜netSum -8~0｜openTot 6~7.5'
   );
   add(
-    betweenClosed(dogRunLineOdds, 100, 160) &&
+    isFiniteNum(dogRunLineOdds) && Number(dogRunLineOdds) > 100 && Number(dogRunLineOdds) <= 160 &&
     betweenClosed(modelTotal, 9, 11) &&
     betweenClosed(metrics?.netSum, -4, 4),
-    'TW6｜dogRL 100~160｜modelTot 9~11｜netSum -4~4'
+    'TW6｜dogRL >100~160｜modelTot 9~11｜netSum -4~4｜砍dogRL +100'
   );
   add(
     betweenClosed(openMlFavoriteOdds, -320, -200) &&
@@ -4115,137 +4158,6 @@ function getMlb944ActualContext(payload, asianLine) {
     modelFavoritePace,
     modelFavoriteNetDiff,
     modelFavoritePaceDiff
-  };
-}
-
-const MLB_ASIAN_LOCKED_MAIN_RULE_ID = 'MLBA003744_FINAL_933';
-const MLB_ASIAN_LOCKED_MAIN_RULE_LABEL = '補空窗｜MLBA003744_FINAL_933｜1333母池｜低分20%｜每日Top3｜排除net_diff -1~1｜買受讓';
-const MLB_MLBA_FINAL_BASE_SCORE = 0.1539908779931585;
-const MLB_MLBA_FINAL_LOW20_THRESHOLD = 0.1402957576826667;
-const MLB_MLBA_FINAL_DAILY_LIMIT = 3;
-const MLB_MLBA_FINAL_SEGMENT_SCORES = {
-  month:{ '4':0.119563854048, '5':0.165243902439, '6':0.061538461538, '7':0.266044776119, '8':0.151204819277, '9':0.191666666667, '10':0.142410205245 },
-  total_line_bin:{ '<7':0.111911345496, '7-8':0.17, '8.5-9':0.148028169014, '9.5-10':0.207741935484, '>=10':0.109595210946 },
-  dog_pace_bin:{ '<7':0.142095210946, '7-8':0.153846153846, '8-9':0.145106382979, '9-10':0.163709677419, '10-10.5':0.174947263398, '10.5-11':0.142447263398 },
-  pace_diff_bin:{ '-3~-2':0.132478620296, '-2~-1':0.173046875, '-1~0':0.187376237624, '0~1':0.18132780083, '1~2':0.096875, '2~3':0.120230900798 },
-  net_diff_bin:{ '-6~-3':0.174243158495, '-3~-1':0.201086956522, '-1~1':0.1169327252, '1~3':0.159803921569, '3~6':0.145802919708 },
-  pace_sum_bin:{ '<16':0.240909090909, '16-17':0.05, '17-18':0.201515151515, '18-19':0.106756756757, '19-20':0.141776315789, '20-21':0.183229760547, '21-22':0.140409064994 }
-};
-
-function getMlbFinalMonthBin(dateText) {
-  const m = String(dateText || '').match(/^\d{4}-(\d{2})-\d{2}$/);
-  return m ? String(Number(m[1])) : 'nan';
-}
-function getMlbFinalTotalLineBin(v) {
-  if (!isFiniteNum(v)) return 'nan';
-  const n = Number(v);
-  if (n < 7) return '<7';
-  if (n < 8) return '7-8';
-  if (n < 8.5) return '8-8.5';
-  if (n < 9) return '8.5-9';
-  if (n < 9.5) return '9-9.5';
-  if (n < 10) return '9.5-10';
-  return '>=10';
-}
-function getMlbFinalDogPaceBin(v) {
-  if (!isFiniteNum(v)) return 'nan';
-  const n = Number(v);
-  if (n < 7) return '<7';
-  if (n < 8) return '7-8';
-  if (n < 9) return '8-9';
-  if (n < 10) return '9-10';
-  if (n < 10.5) return '10-10.5';
-  if (n < 11) return '10.5-11';
-  return 'nan';
-}
-function getMlbFinalPaceDiffBin(v) {
-  if (!isFiniteNum(v)) return 'nan';
-  const n = Number(v);
-  if (n < -3) return 'nan';
-  if (n < -2) return '-3~-2';
-  if (n < -1) return '-2~-1';
-  if (n < 0) return '-1~0';
-  if (n < 1) return '0~1';
-  if (n < 2) return '1~2';
-  if (n < 3) return '2~3';
-  return '>=3';
-}
-function getMlbFinalNetDiffBin(v) {
-  if (!isFiniteNum(v)) return 'nan';
-  const n = Number(v);
-  if (n < -6) return '<-6';
-  if (n < -3) return '-6~-3';
-  if (n < -1) return '-3~-1';
-  if (n < 1) return '-1~1';
-  if (n < 3) return '1~3';
-  if (n < 6) return '3~6';
-  return '>=6';
-}
-function getMlbFinalPaceSumBin(v) {
-  if (!isFiniteNum(v)) return 'nan';
-  const n = Number(v);
-  if (n < 16) return '<16';
-  if (n < 17) return '16-17';
-  if (n < 18) return '17-18';
-  if (n < 19) return '18-19';
-  if (n < 20) return '19-20';
-  if (n < 21) return '20-21';
-  if (n < 22) return '21-22';
-  return 'nan';
-}
-function getMlbMlbaFinalRankScore(ctx) {
-  const bins = {
-    month:getMlbFinalMonthBin(ctx?.gameDate),
-    total_line_bin:getMlbFinalTotalLineBin(ctx?.totalLine),
-    dog_pace_bin:getMlbFinalDogPaceBin(ctx?.underdogPace),
-    pace_diff_bin:getMlbFinalPaceDiffBin(ctx?.favoritePaceDiff),
-    net_diff_bin:getMlbFinalNetDiffBin(ctx?.favoriteNetDiff),
-    pace_sum_bin:getMlbFinalPaceSumBin(ctx?.paceSum)
-  };
-  const featureNames = ['month','total_line_bin','dog_pace_bin','pace_diff_bin','net_diff_bin','pace_sum_bin'];
-  const scores = featureNames.map(name => {
-    const table = MLB_MLBA_FINAL_SEGMENT_SCORES[name] || {};
-    const key = bins[name];
-    return Object.prototype.hasOwnProperty.call(table, key) ? Number(table[key]) : MLB_MLBA_FINAL_BASE_SCORE;
-  });
-  const score = scores.reduce((sum, n) => sum + n, 0) / scores.length;
-  return { score, bins };
-}
-
-function getMlbAsianLockedMainDecision(ctx) {
-  if (!ctx?.info) return { ok:false, reason:'亞洲盤口鎖參版：實盤或模型欄位不足', hits:[], watchCandidates:[] };
-  const { info } = ctx;
-  const lineType = String(info.lineType || '');
-  const rank = getMlbMlbaFinalRankScore(ctx);
-  const isLockedLine = info.points === 1 && lineType.includes('-50');
-  const favoritePaceOk = betweenClosed(ctx.favoritePace, 7, 11);
-  const favPaceBandOk = !(isFiniteNum(ctx.favoritePace) && Number(ctx.favoritePace) >= 8 && Number(ctx.favoritePace) < 8.5);
-  const paceDiffFloorOk = isFiniteNum(ctx.favoritePaceDiff) && Number(ctx.favoritePaceDiff) >= -3;
-  const paceDiffUpperOk = isFiniteNum(ctx.favoritePaceDiff) && Number(ctx.favoritePaceDiff) < 3;
-  const underdogPaceOk = isFiniteNum(ctx.underdogPace) && Number(ctx.underdogPace) < 11;
-  const netDiffOk = !(isFiniteNum(ctx.favoriteNetDiff) && Number(ctx.favoriteNetDiff) >= -1 && Number(ctx.favoriteNetDiff) < 1);
-  const scoreOk = rank.score >= MLB_MLBA_FINAL_LOW20_THRESHOLD;
-  const patternOk = ctx.near10Pattern === '一正一負';
-  if (!(patternOk && isLockedLine && favoritePaceOk && favPaceBandOk && paceDiffFloorOk && paceDiffUpperOk && underdogPaceOk && netDiffOk && scoreOk)) {
-    return {
-      ok:false,
-      reason:`MLBA003744_FINAL_933未命中｜型態${ctx.near10Pattern || '無'}｜實盤${lineType || '無'}｜讓分方節奏${isFiniteNum(ctx.favoritePace) ? round1(ctx.favoritePace) : '無'}｜pace_diff${isFiniteNum(ctx.favoritePaceDiff) ? round1(ctx.favoritePaceDiff) : '無'}｜dog_pace${isFiniteNum(ctx.underdogPace) ? round1(ctx.underdogPace) : '無'}｜net_diff${isFiniteNum(ctx.favoriteNetDiff) ? round1(ctx.favoriteNetDiff) : '無'}｜score${round1(rank.score * 100)}%`,
-      hits:[],
-      watchCandidates:[]
-    };
-  }
-  return {
-    ok:true,
-    isMainPick:true,
-    ruleId:MLB_ASIAN_LOCKED_MAIN_RULE_ID,
-    role:'take',
-    normalizedPick:`${ctx.underdogName} 受讓`,
-    quality:MLB_ASIAN_LOCKED_MAIN_RULE_LABEL,
-    mlbaRankScore:rank.score,
-    mlbaRankBins:rank.bins,
-    hits:[{ label:MLB_ASIAN_LOCKED_MAIN_RULE_LABEL, role:'take', priority:10000 + Math.round(rank.score * 1000) }],
-    watchCandidates:[],
-    reason:`${MLB_ASIAN_LOCKED_MAIN_RULE_LABEL}｜實盤${lineType}｜讓分方${ctx.favoriteName}節奏${round1(ctx.favoritePace)}｜pace_diff${round1(ctx.favoritePaceDiff)}｜dog_pace${round1(ctx.underdogPace)}｜net_diff${round1(ctx.favoriteNetDiff)}｜score${round1(rank.score * 100)}%｜買${ctx.underdogName}受讓`
   };
 }
 
@@ -4598,22 +4510,15 @@ function setMlbRuntimePayloadMeta(payload, key, value) {
 function applyMlbActualMarketDecision(payload, asianLine) {
   const ctx = getMlb944ActualContext(payload, asianLine);
   const spreadDecision = getMlb944SpreadDecision(ctx);
-  const hasOriginalTotalPick = payload['規則4大小推薦'] && payload['規則4大小推薦'] !== 'PASS';
-  const mainDecision = getMlbAsianLockedMainDecision(ctx);
   const decision = spreadDecision.ok
     ? spreadDecision
-    : (!hasOriginalTotalPick ? mainDecision : {
+    : {
       ok:false,
-      reason:`完整944已有大小分推薦，MLBA003744_FINAL_933不補單｜${mainDecision.reason || spreadDecision.reason || ''}`,
+      reason:`補空窗受讓策略已停用｜${spreadDecision.reason || '944實盤讓分未命中'}`,
       hits:[],
       watchCandidates:Array.isArray(spreadDecision.watchCandidates) ? spreadDecision.watchCandidates : []
-    });
+    };
   const hitTags = [];
-  setMlbRuntimePayloadMeta(payload, '__mlbaFinalCandidate', false);
-  setMlbRuntimePayloadMeta(payload, '__mlbaFinalScore', null);
-  setMlbRuntimePayloadMeta(payload, '__mlbaFinalBins', null);
-  setMlbRuntimePayloadMeta(payload, '__mlbaFinalRank', null);
-  setMlbRuntimePayloadMeta(payload, '__mlbaFinalFilteredOut', false);
   payload['規則1讓分推薦'] = 'PASS';
   payload['規則2讓分推薦'] = 'PASS';
   payload['規則3讓分推薦'] = 'PASS';
@@ -4622,12 +4527,6 @@ function applyMlbActualMarketDecision(payload, asianLine) {
   payload['MLB補洞標籤'] = '';
   payload['MLB待觀察候選'] = '';
   if (decision.ok) {
-    if (decision.isMainPick) payload['MLB主推標籤'] = decision.quality;
-    if (decision.isMainPick && decision.ruleId === MLB_ASIAN_LOCKED_MAIN_RULE_ID) {
-      payload.__mlbaFinalCandidate = true;
-      payload.__mlbaFinalScore = Number(decision.mlbaRankScore);
-      payload.__mlbaFinalBins = decision.mlbaRankBins || null;
-    }
     if (decision.role === 'take') {
       payload['規則1讓分推薦'] = decision.normalizedPick;
       payload['MLB加注標籤'] = decision.quality;
@@ -4660,19 +4559,6 @@ function applyMlbActualMarketDecision(payload, asianLine) {
   return ['規則1讓分推薦','規則3讓分推薦','規則4大小推薦'].some(key => payload[key] && payload[key] !== 'PASS');
 }
 
-function clearMlbMlbaFinalOfficialPick(payload, reason) {
-  if (!payload) return;
-  payload['規則1讓分推薦'] = 'PASS';
-  payload['規則3讓分推薦'] = 'PASS';
-  payload['MLB主推標籤'] = '';
-  payload['MLB加注標籤'] = '';
-  payload['MLB補洞標籤'] = '';
-  payload['MLB盤口判斷'] = `MLBA003744_FINAL_933每日Top3外PASS｜${reason || ''}`;
-  payload['MLB規則命中'] = '';
-  payload['MLB讓分有量標籤'] = '';
-  payload.__mlbaFinalFilteredOut = true;
-}
-
 function removeMlbFixedBuyRow(gameId) {
   const rows = readMlbFixedPickRows().filter(row => !(
     String(row.gameId || '') === String(gameId) &&
@@ -4686,49 +4572,6 @@ function removeMlbRenderedCard(gameId) {
   const cards = Array.from(near10ContentEl.querySelectorAll('[data-league="mlb"]'));
   const target = cards.find(el => String(el.dataset.gameId || '') === String(gameId));
   if (target) target.remove();
-}
-
-function applyMlbFinalDailyTop3Filter(dateKey) {
-  const targetDate = String(dateKey || '');
-  const candidates = [];
-  mlbPayloadByGameId.forEach((payload, gameId) => {
-    if (!payload || !payload.__mlbaFinalCandidate || payload.__mlbaFinalFilteredOut) return;
-    if (targetDate && String(payload['比賽日期'] || '') !== targetDate) return;
-    const hasTakePick = payload['規則1讓分推薦'] && payload['規則1讓分推薦'] !== 'PASS';
-    if (!hasTakePick) return;
-    const score = Number(payload.__mlbaFinalScore);
-    candidates.push({
-      gameId:String(gameId),
-      payload,
-      score:Number.isFinite(score) ? score : MLB_MLBA_FINAL_BASE_SCORE,
-      matchup:String(payload['對戰'] || '')
-    });
-  });
-  candidates.sort((a,b) => {
-    if (b.score !== a.score) return b.score - a.score;
-    return a.matchup.localeCompare(b.matchup, 'zh-Hant');
-  });
-  const allowed = new Set(candidates.slice(0, MLB_MLBA_FINAL_DAILY_LIMIT).map(item => item.gameId));
-  let changed = false;
-  candidates.forEach((item, idx) => {
-    item.payload.__mlbaFinalRank = idx + 1;
-    if (allowed.has(item.gameId)) return;
-    clearMlbMlbaFinalOfficialPick(item.payload, `rank ${idx + 1} / ${candidates.length}｜score ${round1(item.score * 100)}%`);
-    mlbPayloadByGameId.set(item.gameId, item.payload);
-    removeMlbFixedBuyRow(item.gameId);
-    removeMlbRenderedCard(item.gameId);
-    savePickResultLocal(item.payload);
-    syncQueue = syncQueue
-      .then(() => syncResultToCloud(item.payload))
-      .catch(err => { console.warn('MLBA FINAL Top3 sync error', err); });
-    changed = true;
-  });
-  if (changed) updateMlbFixedPickPanel();
-  return {
-    candidates:candidates.length,
-    kept:Math.min(candidates.length, MLB_MLBA_FINAL_DAILY_LIMIT),
-    removed:Math.max(0, candidates.length - MLB_MLBA_FINAL_DAILY_LIMIT)
-  };
 }
 
 function splitMlbFusionSources(raw) {
@@ -4802,7 +4645,7 @@ function buildMlbFusionRecommendationItems(payload) {
   const twLotteryPick = payload?.['MLB新邏輯推薦'];
   if (twLotteryPick && twLotteryPick !== 'PASS') {
     const twLotteryLine = String(payload?.['MLB新邏輯實盤'] || line || '').trim();
-    const twLotteryTag = twLotteryLine ? `實盤${twLotteryLine.replace('%','')}` : '甜盤';
+    const twLotteryTag = twLotteryLine ? `下注盤${twLotteryLine.replace('%','')}` : '甜盤';
     addItem(
       `spread|twlottery|-1.5|${twLotteryTag}|${twLotteryPick}`,
       `MLB新邏輯｜運彩盤-1.5甜盤｜${twLotteryTag}`,
