@@ -3,93 +3,123 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#2e465c" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="NBA MLB" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png" />
   <title>NBA / MLB 主客鎖定版｜NBA衝刺版｜MLB融合實盤版</title>
   <style>
-    :root { --bg:#eef2f6; --card:#fcfcf8; --text:#243447; --muted:#6b7280; --line:#dde4dc; --btn:#3d6f8e; --btn2:#5d7f6f; --accent:#f6f7ef; --alert:#c56a2d; }
+    :root {
+      --bg:#f3f6f8;
+      --card:#ffffff;
+      --text:#1f2f3d;
+      --muted:#667085;
+      --line:#dbe5df;
+      --line-strong:#c7d7ce;
+      --btn:#245f73;
+      --btn2:#587664;
+      --accent:#f7faf7;
+      --alert:#b85c18;
+      --green:#0f7a4f;
+      --green-soft:#e8f7ef;
+      --orange:#a85f12;
+      --orange-soft:#fff4e5;
+      --red:#b42318;
+      --red-soft:#fff0ed;
+      --blue-soft:#eaf2f6;
+      --radius:8px;
+      --shadow:0 10px 24px rgba(31,47,61,.08);
+    }
     * { box-sizing:border-box; }
-    body { margin:0; font-family:"Microsoft JhengHei","PingFang TC","Noto Sans TC",Arial,sans-serif; background:linear-gradient(180deg,#eef2f6 0%,#f7f8f5 100%); color:var(--text); line-height:1.5; }
-    .wrap { max-width:760px; margin:0 auto; padding:14px; }
-    .toolbar,.card { background:rgba(252,252,248,.96); border:1px solid var(--line); border-radius:18px; box-shadow:0 8px 24px rgba(36,52,71,.06); }
-    .toolbar { padding:14px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:14px; position:sticky; top:0; z-index:9; backdrop-filter:blur(8px); }
-    h1 { font-size:20px; width:100%; margin:0 0 2px 0; color:#2e465c; letter-spacing:.3px; }
-    button { border:0; border-radius:12px; padding:11px 15px; color:#fff; cursor:pointer; font-size:15px; font-weight:700; letter-spacing:.2px; }
+    body { margin:0; font-family:"Microsoft JhengHei","PingFang TC","Noto Sans TC",Arial,sans-serif; background:linear-gradient(180deg,#edf3f6 0%,#f8faf8 42%,#eef4f0 100%); color:var(--text); line-height:1.5; }
+    .wrap { max-width:780px; margin:0 auto; padding:14px; }
+    .toolbar,.card { background:rgba(255,255,255,.97); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); }
+    .toolbar { padding:14px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:14px; position:sticky; top:0; z-index:9; backdrop-filter:blur(10px); border-top:4px solid #245f73; }
+    h1 { font-size:20px; width:100%; margin:0 0 2px 0; color:#20394c; letter-spacing:0; }
+    button { border:0; border-radius:8px; padding:11px 15px; color:#fff; cursor:pointer; font-size:15px; font-weight:800; letter-spacing:0; box-shadow:0 2px 0 rgba(0,0,0,.08); }
     button:disabled { opacity:.65; cursor:not-allowed; }
-    button.active { outline:3px solid rgba(197,106,45,.35); }
-    .btn-primary { background:var(--btn); }
-    .btn-secondary { background:var(--btn2); }
+    button.active { outline:3px solid rgba(184,92,24,.28); }
+    .btn-primary { background:linear-gradient(180deg,#2b7087,#245f73); }
+    .btn-secondary { background:linear-gradient(180deg,#63876f,#587664); }
     .muted { color:var(--muted); font-size:13px; }
     .status { width:100%; }
-    .league-toggle { display:inline-flex; align-items:center; gap:6px; padding:8px 11px; border:1px solid var(--line); border-radius:999px; background:#f6f8f5; font-size:14px; color:#415467; }
-    .api-key-input { width:210px; max-width:100%; padding:9px 11px; border:1px solid var(--line); border-radius:10px; background:#fff; color:#26384c; font-size:13px; }
+    .health-status { font-weight:800; }
+    .strategy-status { color:#415466; font-size:12px; line-height:1.45; }
+    .league-toggle { display:inline-flex; align-items:center; gap:6px; padding:8px 11px; border:1px solid var(--line-strong); border-radius:999px; background:#f8fbf9; font-size:14px; color:#31485b; font-weight:800; }
+    .api-key-input { width:210px; max-width:100%; padding:9px 11px; border:1px solid var(--line); border-radius:8px; background:#fff; color:#26384c; font-size:13px; }
     .grid { display:grid; gap:14px; }
     .match { padding:14px; }
     .topline { display:flex; justify-content:space-between; gap:8px; align-items:flex-start; flex-wrap:wrap; margin-bottom:10px; }
     .title { font-size:18px; font-weight:800; line-height:1.35; }
     .sub { color:var(--muted); font-size:13px; margin-top:2px; }
-    .tag { display:inline-block; border:1px solid #d9e0d8; background:#f7f8f3; border-radius:999px; padding:5px 10px; font-size:12px; color:#42556a; font-weight:700; }
-    .mlb-fixed-pick-panel { position:fixed; top:78px; right:12px; z-index:20; width:340px; max-height:76vh; overflow:auto; background:rgba(248,250,252,.98); border:1px solid #d7dee8; border-radius:14px; box-shadow:0 16px 36px rgba(36,52,71,.16); padding:10px; display:none; }
-    .mlb-fixed-pick-head { position:sticky; top:-10px; z-index:1; margin:-10px -10px 10px; padding:11px 12px; background:#2e465c; color:#fff; font-size:14px; font-weight:900; display:flex; justify-content:space-between; gap:8px; align-items:center; }
-    .mlb-fixed-pick-count { display:inline-flex; align-items:center; justify-content:center; min-width:26px; height:22px; margin-left:6px; border-radius:999px; background:#f4f7fb; color:#2e465c; font-size:12px; font-weight:900; }
-    .mlb-fixed-pick-reset { border:1px solid rgba(255,255,255,.35); border-radius:9px; padding:6px 9px; font-size:12px; line-height:1; background:rgba(255,255,255,.14); color:#fff; cursor:pointer; font-weight:900; }
-    .mlb-fixed-pick-row { border:1px solid #dde5ee; border-radius:12px; background:#fff; padding:10px; margin-top:9px; }
+    .tag { display:inline-block; border:1px solid #cfded5; background:#f7faf7; border-radius:999px; padding:5px 10px; font-size:12px; color:#31485b; font-weight:800; }
+    .mlb-fixed-pick-panel { position:fixed; top:78px; right:12px; z-index:20; width:354px; max-height:76vh; overflow:auto; background:rgba(250,252,251,.98); border:1px solid #cbd8d2; border-radius:8px; box-shadow:0 20px 42px rgba(31,47,61,.18); padding:10px; display:none; }
+    .mlb-fixed-pick-head { position:sticky; top:-10px; z-index:1; margin:-10px -10px 10px; padding:12px; background:linear-gradient(180deg,#2b4f68,#223f55); color:#fff; font-size:14px; font-weight:900; display:flex; justify-content:space-between; gap:8px; align-items:center; }
+    .mlb-fixed-pick-count { display:inline-flex; align-items:center; justify-content:center; min-width:26px; height:22px; margin-left:6px; border-radius:999px; background:#fff; color:#20394c; font-size:12px; font-weight:900; }
+    .mlb-fixed-pick-reset { border:1px solid rgba(255,255,255,.35); border-radius:8px; padding:6px 9px; font-size:12px; line-height:1; background:rgba(255,255,255,.14); color:#fff; cursor:pointer; font-weight:900; }
+    .mlb-fixed-pick-row { border:1px solid #d9e5de; border-left:4px solid var(--green); border-radius:8px; background:#fff; padding:10px; margin-top:9px; }
     .mlb-fixed-pick-row:first-of-type { margin-top:0; }
     .mlb-fixed-pick-title { font-size:13px; font-weight:900; color:#26384c; line-height:1.35; margin-bottom:7px; overflow-wrap:anywhere; }
     .mlb-fixed-pick-meta { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
-    .mlb-fixed-pick-pill { display:inline-flex; align-items:center; min-height:22px; border-radius:999px; padding:3px 8px; font-size:11px; line-height:1.2; font-weight:900; background:#eef2f6; color:#34546f; }
-    .mlb-fixed-pick-pill.line-plus { background:#ecfdf3; color:#166534; }
-    .mlb-fixed-pick-pill.line-minus { background:#fff7ed; color:#9a3412; }
-    .mlb-fixed-pick-pill.addon { background:#fee2e2; color:#b91c1c; }
+    .mlb-fixed-pick-pill { display:inline-flex; align-items:center; min-height:22px; border-radius:999px; padding:3px 8px; font-size:11px; line-height:1.2; font-weight:900; background:#eef4f7; color:#34546f; }
+    .mlb-fixed-pick-pill.line-plus { background:var(--green-soft); color:var(--green); }
+    .mlb-fixed-pick-pill.line-minus { background:var(--orange-soft); color:var(--orange); }
+    .mlb-fixed-pick-pill.addon { background:var(--red-soft); color:var(--red); }
     .mlb-fixed-pick-pill.source { background:#eaf0f7; color:#355067; }
+    .mlb-fixed-pick-pill.sweet { background:#e8fff5; color:#08764f; }
+    .mlb-fixed-pick-pill.total { background:#edf4ff; color:#245b94; }
     .mlb-fixed-pick-text { border-top:1px solid #edf1f5; padding-top:8px; margin-top:8px; }
-    .mlb-fixed-pick-main { font-size:19px; line-height:1.28; font-weight:900; color:#b91c1c; overflow-wrap:anywhere; }
+    .mlb-fixed-pick-main { font-size:19px; line-height:1.28; font-weight:900; color:var(--red); overflow-wrap:anywhere; }
     .mlb-fixed-pick-sub { margin-top:4px; font-size:12px; line-height:1.35; font-weight:800; color:#5f6f82; overflow-wrap:anywhere; }
-    .mlb-fixed-pick-row.is-watch { border-color:#f1c37b; background:#fffaf0; }
-    .mlb-fixed-pick-row.is-watch .mlb-fixed-pick-main { color:#92400e; }
-    .mlb-fixed-pick-head.watch-head { position:static; margin:12px -10px 8px; background:#8a5a21; }
+    .mlb-fixed-pick-row.is-watch { border-color:#f2c57d; border-left-color:var(--orange); background:#fffaf2; }
+    .mlb-fixed-pick-row.is-watch .mlb-fixed-pick-main { color:var(--orange); }
+    .mlb-fixed-pick-head.watch-head { position:static; margin:12px -10px 8px; background:linear-gradient(180deg,#a0641d,#85511a); }
     .mlb-fixed-pick-empty { padding:9px 4px 2px; color:#718096; font-size:12px; font-weight:800; }
     @media (max-width: 1120px) { .mlb-fixed-pick-panel { position:static; width:auto; max-height:none; margin:0 14px 12px; } .mlb-fixed-pick-head { position:static; } }
-    .error { color:#b91c1c; background:#fef2f2; border:1px solid #fecaca; padding:11px 13px; border-radius:12px; }
-    .note { color:#92400e; background:#fffbeb; border:1px solid #fde68a; padding:11px 13px; border-radius:12px; }
-    .versus-card { margin-top:10px; border:1px solid var(--line); border-radius:18px; overflow:hidden; background:#f7f8f2; }
-    .versus-head { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; text-align:center; background:#eef1e6; border-bottom:1px solid var(--line); }
+    .error { color:var(--red); background:var(--red-soft); border:1px solid #fecaca; padding:11px 13px; border-radius:8px; }
+    .note { color:var(--orange); background:var(--orange-soft); border:1px solid #f1c37b; padding:11px 13px; border-radius:8px; }
+    .versus-card { margin-top:10px; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:#f7faf7; }
+    .versus-head { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; text-align:center; background:#edf4ef; border-bottom:1px solid var(--line); }
     .versus-team-title { padding:14px 10px; font-size:19px; font-weight:800; color:#34546f; letter-spacing:.3px; }
     .versus-time { padding:14px 10px; font-size:15px; color:#667085; font-weight:700; white-space:nowrap; }
     .versus-table { width:100%; border-collapse:collapse; table-layout:fixed; }
     .versus-table td { border-bottom:1px solid #e0e5db; padding:11px 9px; text-align:center; font-size:14px; background:#fbfbf7; }
     .versus-table tr:nth-child(even) td:not(.stat-name) { background:#f8f9f4; }
     .versus-table tr:last-child td { border-bottom:0; }
-    .stat-name { color:#667085; width:30%; background:#eff2e8 !important; font-size:14px; }
+    .stat-name { color:#667085; width:30%; background:#edf4ef !important; font-size:14px; }
     .team-side { width:35%; }
     .small-top { font-size:12px; color:#7b8669; font-weight:700; display:block; margin-bottom:2px; }
     .team-role { color:#556271; font-size:13px; margin-left:4px; }
     .stat-main { font-size:17px; font-weight:800; color:#314256; letter-spacing:.2px; }
-    .net-positive { color:#c2410c; font-weight:900; }
+    .net-positive { color:var(--orange); font-weight:900; }
     .sum-alert { color:var(--alert); }
     .footer-note { margin-top:9px; font-size:12px; color:var(--muted); }
-    .bet-box { margin-top:10px; padding:11px 12px; border:1px solid var(--line); border-radius:14px; background:#f8faf6; }
+    .bet-box { margin-top:10px; padding:11px 12px; border:1px solid var(--line); border-left:4px solid #245f73; border-radius:8px; background:#fbfdfb; }
     .bet-head { display:flex; justify-content:space-between; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:6px; }
     .bet-pick { font-weight:800; color:#2e465c; }
     .bet-meta { font-size:12px; color:#667085; }
     .bet-sub { font-size:13px; color:#556271; margin-top:4px; }
     .bet-pick-list { display:flex; flex-direction:column; gap:8px; }
-    .bet-pick-item { font-size:22px; font-weight:900; color:#b91c1c; line-height:1.35; }
+    .bet-pick-item { font-size:22px; font-weight:900; color:var(--red); line-height:1.35; }
     .bet-pick-item.secondary { font-size:22px; }
-    .bet-strong { color:#b45309; }
+    .bet-strong { color:var(--orange); }
     .bet-pass { color:#6b7280; }
     .mlb-candidate-preview { display:flex; flex-direction:column; gap:8px; }
     .mlb-candidate-preview-head { font-size:13px; color:#556271; font-weight:800; }
-    .mlb-candidate-preview-row { border:1px solid #e6ebe3; border-radius:14px; background:#fffdf7; padding:9px 10px; }
+    .mlb-candidate-preview-row { border:1px solid #e1e8e3; border-radius:8px; background:#fffdf7; padding:9px 10px; }
     .mlb-candidate-preview-market { font-size:12px; color:#667085; font-weight:900; margin-bottom:3px; }
-    .mlb-candidate-preview-pick { font-size:21px; line-height:1.35; font-weight:900; color:#b91c1c; }
+    .mlb-candidate-preview-pick { font-size:21px; line-height:1.35; font-weight:900; color:var(--red); }
     .mlb-inline-market { padding:6px 4px !important; }
     .mlb-inline-market-label { font-size:11px; color:#667085; font-weight:800; margin-bottom:5px; }
     .mlb-auto-market-cell { display:flex; flex-direction:column; gap:4px; align-items:center; justify-content:center; min-height:54px; }
-    .mlb-auto-market-main { font-size:17px; font-weight:900; color:#b91c1c; line-height:1.25; }
+    .mlb-auto-market-main { font-size:17px; font-weight:900; color:var(--red); line-height:1.25; }
     .mlb-auto-market-sub { font-size:11px; color:#667085; font-weight:800; line-height:1.3; }
     .playsport-market-note { margin-top:6px; font-size:11px; line-height:1.35; color:#556271; font-weight:800; }
     .playsport-market-note strong { color:#b45309; }
     .rule-debug { margin-top:6px; font-size:12px; color:#556271; font-weight:700; }
-    .mark-red { color:#b91c1c; font-weight:800; }
+    .mark-red { color:var(--red); font-weight:800; }
     .window-note {
       width:100%;
       font-size:13px;
@@ -98,9 +128,10 @@
     }
 
     .page-tabs { width:100%; display:flex; gap:8px; }
-    .page-tab { flex:1; background:#e8edf1; color:#355067; border:1px solid var(--line); }
-    .page-tab.active { background:#345a74; color:#fff; border-color:#345a74; box-shadow:0 6px 16px rgba(52,90,116,.18); }
+    .page-tab { flex:1; background:#edf3f6; color:#355067; border:1px solid var(--line); }
+    .page-tab.active { background:#2b5e75; color:#fff; border-color:#2b5e75; box-shadow:0 6px 16px rgba(52,90,116,.18); }
     .page-panel.hidden { display:none; }
+    .hidden { display:none !important; }
     .record-summary {
       width:100%;
       display:grid;
@@ -110,14 +141,14 @@
     .record-pill {
       background:#f7f8f3;
       border:1px solid var(--line);
-      border-radius:18px;
+      border-radius:8px;
       padding:14px 12px;
       text-align:center;
     }
     .record-pill b {
       display:block;
       font-size:17px;
-      color:#2e465c;
+      color:#20394c;
       margin-bottom:4px;
     }
     .record-pill span {
@@ -130,7 +161,7 @@
     .verify-box {
       margin-top:10px;
       border:1px solid var(--line);
-      border-radius:14px;
+      border-radius:8px;
       background:#fbfbf7;
       overflow:hidden;
     }
@@ -141,35 +172,24 @@
       font-size:13px;
       font-weight:700;
       color:#355067;
-      background:#f3f6f1;
+      background:#edf4ef;
     }
     .verify-box summary::-webkit-details-marker { display:none; }
     .verify-body { padding:10px 12px; font-size:12px; color:#556271; }
     .verify-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
-    .verify-item { border:1px solid var(--line); border-radius:12px; padding:8px 9px; background:#fff; }
+    .verify-item { border:1px solid var(--line); border-radius:8px; padding:8px 9px; background:#fff; }
     .verify-item b { display:block; margin-bottom:4px; color:#2e465c; }
-    .verify-list { margin-top:8px; border:1px solid var(--line); border-radius:12px; background:#fff; overflow:hidden; }
+    .verify-list { margin-top:8px; border:1px solid var(--line); border-radius:8px; background:#fff; overflow:hidden; }
     .verify-row { padding:7px 9px; border-bottom:1px solid #edf1ea; }
     .verify-row:last-child { border-bottom:0; }
 
-
-    .recommend-summary { margin-top:10px; border:1px solid var(--line); border-radius:18px; background:#fffdf7; overflow:hidden; }
-    .recommend-summary-head { padding:11px 12px; background:#eef1e6; color:#34546f; font-weight:900; display:flex; justify-content:space-between; gap:8px; align-items:center; flex-wrap:wrap; }
-    .recommend-summary-head span { font-size:12px; color:#667085; font-weight:700; }
-    .recommend-summary-list { display:flex; flex-direction:column; }
-    .recommend-summary-row { padding:10px 12px; border-top:1px solid #e6ebe3; background:#fbfbf7; }
-    .recommend-summary-title { font-weight:900; color:#2e465c; margin-bottom:5px; }
-    .recommend-summary-meta { font-size:12px; color:#667085; margin-bottom:6px; }
-    .recommend-summary-picks { display:flex; flex-direction:column; gap:4px; }
-    .recommend-summary-pick { font-size:16px; font-weight:900; color:#b91c1c; line-height:1.35; }
-
-    .simple-summary-card { margin-top:10px; padding:12px; border:1px solid var(--line); border-radius:18px; background:#fffdf7; }
+    .simple-summary-card { margin-top:10px; padding:12px; border:1px solid var(--line); border-radius:8px; background:#fffdf7; }
     .simple-summary-head { display:flex; justify-content:space-between; align-items:center; gap:8px; font-weight:900; color:#2e465c; margin-bottom:8px; }
     .simple-summary-count { font-size:12px; color:#667085; font-weight:700; }
     .simple-summary-list { display:flex; flex-direction:column; gap:8px; }
-    .simple-summary-row { border:1px solid #e6ebe3; border-radius:14px; background:#fbfbf7; padding:10px 11px; }
+    .simple-summary-row { border:1px solid #e6ebe3; border-radius:8px; background:#fbfbf7; padding:10px 11px; }
     .simple-summary-league { font-size:12px; color:#667085; font-weight:800; margin-bottom:4px; }
-    .simple-summary-pick { font-size:22px; line-height:1.35; font-weight:900; color:#b91c1c; }
+    .simple-summary-pick { font-size:22px; line-height:1.35; font-weight:900; color:var(--red); }
 
     @media (max-width: 640px) {
       body { background:#f4f6f8; }
@@ -179,10 +199,10 @@
         grid-template-columns:repeat(4,minmax(0,1fr));
         gap:8px;
         padding:10px;
-        border-radius:14px;
+        border-radius:8px;
         margin-bottom:10px;
         top:0;
-        max-height:46vh;
+        max-height:38vh;
         overflow:auto;
       }
       h1 {
@@ -207,7 +227,7 @@
         padding:9px 8px;
         font-size:15px;
         font-weight:900;
-        border-radius:12px;
+        border-radius:8px;
       }
       .league-toggle input {
         width:18px;
@@ -218,10 +238,20 @@
         grid-column:span 2;
         width:100%;
       }
+      .api-key-input {
+        display:block;
+        grid-column:1 / -1;
+        width:100%;
+      }
+      #saveSgoApiKeyBtn {
+        display:block;
+        grid-column:1 / -1;
+        width:100%;
+      }
       button {
         font-size:15px;
         padding:10px 9px;
-        border-radius:12px;
+        border-radius:8px;
       }
       .status {
         grid-column:1 / -1;
@@ -240,7 +270,7 @@
       }
       .match {
         padding:10px;
-        border-radius:14px;
+        border-radius:8px;
       }
       .topline {
         margin-bottom:8px;
@@ -262,7 +292,7 @@
         max-height:48vh;
         overflow:auto;
         margin:0 0 10px;
-        border-radius:14px;
+        border-radius:8px;
         padding:8px;
         box-shadow:0 8px 22px rgba(36,52,71,.10);
       }
@@ -279,7 +309,7 @@
         margin:10px -8px 8px;
       }
       .mlb-fixed-pick-row {
-        border-radius:11px;
+        border-radius:8px;
         padding:9px;
         margin-top:8px;
       }
@@ -291,7 +321,7 @@
       }
       .versus-card {
         margin-top:8px;
-        border-radius:13px;
+        border-radius:8px;
       }
       .versus-team-title { font-size:16px; padding:12px 6px; }
       .versus-time { font-size:14px; padding:12px 4px; }
@@ -326,7 +356,7 @@
       }
       .bet-box {
         padding:10px;
-        border-radius:12px;
+        border-radius:8px;
       }
       .bet-head {
         gap:5px;
@@ -353,7 +383,7 @@
       }
       .record-pill {
         padding:11px 10px;
-        border-radius:13px;
+        border-radius:8px;
       }
     }
   </style>
@@ -372,10 +402,12 @@
       <button class="btn-secondary" id="tomorrowBtn">更新明天</button>
       <input class="api-key-input" id="sgoApiKeyInput" type="password" placeholder="SportsGameOdds API Key">
       <button class="btn-secondary" id="saveSgoApiKeyBtn" type="button">儲存初盤Key</button>
-      <div class="window-note hidden" id="windowNote">目前顯示：NBA 精砍版（N1/N2/N3/N4/N5 + SUP6/SUP7/SUP8/SUP9；SUP9已接ESPN/SBR初盤輔助；已砍低效拖累區間）；MLB 944攻擊版 + 新邏輯運彩盤-1.5甜盤，已砍TW低效區間；補空窗受讓策略已停用；雙重賽整組不判斷</div>
+      <div class="window-note hidden" id="windowNote">目前顯示：NBA 精砍版（N1/N2/N3/N4/N5 + SUP6/SUP7/SUP8/SUP9；SUP9已接ESPN/SBR初盤輔助；已砍低效拖累區間）；MLB 944攻擊版 + 新邏輯運彩盤-1.5甜盤，已砍TW低效區間；雙重賽整組不判斷</div>
       <div class="status muted" id="status">尚未更新</div>
       <div class="status muted" id="cloudStatus">雲端寫入：待命</div>
       <div class="status muted" id="playsportStatus">Playsport盤口：待命</div>
+      <div class="status muted health-status" id="cloudHealthStatus">雲端健康：待檢查</div>
+      <div class="status muted strategy-status" id="strategyStatus">策略版本：讀取中</div>
     </div>
     <div id="mlbFixedPickPanel" class="mlb-fixed-pick-panel"></div>
         <div id="near10Page" class="page-panel hidden">
@@ -411,7 +443,6 @@
   </div>
 <script>
 
-const contentEl = null;
 const statusEl = document.getElementById('status');
 const nbaToggle = document.getElementById('nbaToggle');
 const mlbToggle = document.getElementById('mlbToggle');
@@ -420,27 +451,31 @@ const tomorrowBtn = document.getElementById('tomorrowBtn');
 const sgoApiKeyInput = document.getElementById('sgoApiKeyInput');
 const saveSgoApiKeyBtn = document.getElementById('saveSgoApiKeyBtn');
 const windowNote = document.getElementById('windowNote');
-const recommendTabBtn = null;
 const near10TabBtn = document.getElementById('near10TabBtn');
 const statsTabBtn = document.getElementById('statsTabBtn');
-const recommendPage = null;
 const near10Page = document.getElementById('near10Page');
 const statsPage = document.getElementById('statsPage');
 const near10ContentEl = document.getElementById('near10Content');
 const near10StatusEl = document.getElementById('near10Status');
-const recommendSummaryEl = document.getElementById('recommendSummary');
 const statsStatusEl = document.getElementById('statsStatus');
 const cloudStatusEl = document.getElementById('cloudStatus');
 const playsportStatusEl = document.getElementById('playsportStatus');
+const cloudHealthStatusEl = document.getElementById('cloudHealthStatus');
+const strategyStatusEl = document.getElementById('strategyStatus');
 const mlbFixedPickPanelEl = document.getElementById('mlbFixedPickPanel');
 
 const CONFIG = {
   nba: { key:'nba', name:'NBA', sport:'basketball', league:'nba', lookbackDays:40, totalEdge:8, spreadEdge:3.5, highTotal:235 },
   mlb: { key:'mlb', name:'MLB', sport:'baseball', league:'mlb', lookbackDays:25, totalEdge:1.2, spreadEdge:0.8, highTotal:11.5 }
 };
-const APP_BUILD_ID = '2026-06-28 MLB 944 + TW -1.5 optimized no fallback';
+const APP_BUILD_ID = '2026-07-02 mlb drag cuts v2';
 const MLB_TW_LOTTERY_RUNLINE_SOURCE_LABEL = '新邏輯：運彩盤 -1.5';
 const MLB_TW_LOTTERY_RUNLINE_SOURCE_RE = /新邏輯|甜盤|台彩|運彩|twlottery|lottery|runline|-1\.5/i;
+const ACTIVE_STRATEGY_SUMMARY = [
+  'NBA：N1/N2/N3/N4/N5 + SUP6/SUP7/SUP8/SUP9',
+  'MLB：944主板 + 944補強/BOOST精砍 + 944大小分 + 運彩-1.5甜盤',
+  'MLB保護：Playsport亞洲盤口、已砍BOOST03/04/補強04低效半邊與拖累甜盤、雙重賽整組PASS'
+];
 
 const TEAM_NAME_ZH = {
   nba: {'Atlanta Hawks':'亞特蘭大老鷹','Boston Celtics':'波士頓塞爾提克','Brooklyn Nets':'布魯克林籃網','Charlotte Hornets':'夏洛特黃蜂','Chicago Bulls':'芝加哥公牛','Cleveland Cavaliers':'克里夫蘭騎士','Dallas Mavericks':'達拉斯獨行俠','Denver Nuggets':'丹佛金塊','Detroit Pistons':'底特律活塞','Golden State Warriors':'金州勇士','Houston Rockets':'休士頓火箭','Indiana Pacers':'印第安納溜馬','LA Clippers':'洛杉磯快艇','Los Angeles Clippers':'洛杉磯快艇','Los Angeles Lakers':'洛杉磯湖人','LA Lakers':'洛杉磯湖人','Memphis Grizzlies':'曼菲斯灰熊','Miami Heat':'邁阿密熱火','Milwaukee Bucks':'密爾瓦基公鹿','Minnesota Timberwolves':'明尼蘇達灰狼','New Orleans Pelicans':'紐奧良鵜鶘','New York Knicks':'紐約尼克','Oklahoma City Thunder':'奧克拉荷馬雷霆','Orlando Magic':'奧蘭多魔術','Philadelphia 76ers':'費城76人','Phoenix Suns':'鳳凰城太陽','Portland Trail Blazers':'波特蘭拓荒者','Sacramento Kings':'沙加緬度國王','San Antonio Spurs':'聖安東尼奧馬刺','Toronto Raptors':'多倫多暴龍','Utah Jazz':'猶他爵士','Washington Wizards':'華盛頓巫師'},
@@ -452,13 +487,15 @@ let currentOffsetDays = 0;
 const syncState = { pending:0, success:0, failed:0, lastMessage:'待命' };
 let syncQueue = Promise.resolve();
 const mlbPayloadByGameId = new Map();
-const mlbEventByGameId = new Map();
-const mlbMarketByGameId = new Map();
-const mlbBasePicksByGameId = new Map();
 let playSportBackgroundRetryTimer = null;
 let playSportBackgroundRetryToken = 0;
+let loadGamesRunToken = 0;
+let loadGamesInProgress = false;
 
-const CLOUD_API_BASE = window.CLOUD_API_BASE || 'https://nba-mlb-cloud.onrender.com';
+const DEFAULT_CLOUD_API_BASE = (location.protocol === 'http:' || location.protocol === 'https:')
+  ? location.origin
+  : 'https://nba-mlb-cloud.onrender.com';
+const CLOUD_API_BASE = window.CLOUD_API_BASE || DEFAULT_CLOUD_API_BASE;
 const ESPN_PROXY_BASE = window.ESPN_PROXY_BASE || CLOUD_API_BASE;
 const RECORD_STORAGE_KEY = 'nba_mlb_models_daily_results_v2';
 const PLAYSPORT_CONFIG = {
@@ -618,8 +655,13 @@ function judgePickResultForPayload(event, market, pick, leftName, rightName, pay
   }
   return judgePickResult(event, market, pick, leftName, rightName);
 }
-function judgeMlbTwLotteryRunlineResult(event, pick, leftName, rightName) {
+function judgeMlbTwLotteryRunlineResult(event, pick, leftName, rightName, payload=null) {
   if (!pick || pick === 'PASS') return '';
+  const asianLine = String(payload?.['亞洲讓分盤'] || '').trim();
+  const newLogicLine = String(payload?.['MLB新邏輯實盤'] || '').trim();
+  if (asianLine && !isMlbSkipAsianLine(asianLine) && newLogicLine && !newLogicLine.includes('運彩')) {
+    return judgeSpreadByScoreAndLine(event, pick, leftName, rightName, null, asianLine);
+  }
   return judgeSpreadByScoreAndLine(event, pick, leftName, rightName, 1.5, '');
 }
 function buildCloudPayload(payload) {
@@ -752,6 +794,11 @@ function judgePickResultFromStoredRow(row, event, pickKey) {
     const rowAwayName = String(row?.客隊 || awayName);
     const rowHomeName = String(row?.主隊 || homeName);
     if (pickKey === 'MLB新邏輯推薦') {
+      const asianLine = String(row?.['亞洲讓分盤'] || '').trim();
+      const newLogicLine = String(row?.['MLB新邏輯實盤'] || '').trim();
+      if (asianLine && !isMlbSkipAsianLine(asianLine) && newLogicLine && !newLogicLine.includes('運彩')) {
+        return judgeSpreadByScoreAndLine(event, pick, rowAwayName, rowHomeName, null, asianLine);
+      }
       return judgeSpreadByScoreAndLine(event, pick, rowAwayName, rowHomeName, 1.5, '');
     }
     return judgeSpreadByScoreAndLine(event, pick, rowAwayName, rowHomeName, null, row?.['亞洲讓分盤']);
@@ -994,6 +1041,42 @@ function setPlaySportStatus(message, kind='muted') {
   if (!playsportStatusEl) return;
   playsportStatusEl.className = `status ${kind}`;
   playsportStatusEl.textContent = `Playsport盤口：${message}`;
+}
+function setCloudHealthStatus(message, kind='muted') {
+  if (!cloudHealthStatusEl) return;
+  cloudHealthStatusEl.className = `status health-status ${kind}`;
+  cloudHealthStatusEl.textContent = `雲端健康：${message}`;
+}
+function refreshStrategyStatus() {
+  if (strategyStatusEl) {
+    strategyStatusEl.textContent = `策略版本：${APP_BUILD_ID}｜${ACTIVE_STRATEGY_SUMMARY.join('｜')}`;
+  }
+  if (windowNote) {
+    windowNote.textContent = `目前顯示：${ACTIVE_STRATEGY_SUMMARY.join('；')}。舊版規則已不作為 active 規則，舊欄位名只用來承接結果。`;
+  }
+}
+async function checkCloudHealth() {
+  if (!cloudHealthStatusEl) return false;
+  if (!/^https?:$/.test(location.protocol)) {
+    setCloudHealthStatus('本機檔案模式，無法直接代表雲端狀態', 'status-warn');
+    return false;
+  }
+  try {
+    setCloudHealthStatus('檢查中...', 'status-warn');
+    const res = await fetchWithTimeout(`${CLOUD_API_BASE}/health?_=${Date.now()}`, { cache:'no-store' }, 7000);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    let extra = '';
+    try {
+      const data = await res.clone().json();
+      if (data?.status) extra = `｜${data.status}`;
+      if (data?.playsport_cache_ttl_seconds) extra += `｜盤口快取${data.playsport_cache_ttl_seconds}s`;
+    } catch (jsonErr) {}
+    setCloudHealthStatus(`正常｜${APP_BUILD_ID}${extra}`, 'status-good');
+    return true;
+  } catch (err) {
+    setCloudHealthStatus(`連線失敗/逾時｜多半是Oracle或後端卡住，不是策略沒推薦｜${err?.message || err}`, 'status-bad');
+    return false;
+  }
 }
 function getCloudRowsForLeague(store, league, season) {
   return Object.values(store || {}).flatMap(day => Object.values(day || {})).filter(item => {
@@ -2011,8 +2094,13 @@ function formatMarketSpread(market, leftName, rightName) {
   return `${favName} -${round1(market.spread)}`;
 }
 function setBusy(isBusy) {
+  loadGamesInProgress = !!isBusy;
   todayBtn.disabled = isBusy;
   tomorrowBtn.disabled = isBusy;
+  if (nbaToggle) nbaToggle.disabled = isBusy;
+  if (mlbToggle) mlbToggle.disabled = isBusy;
+  if (sgoApiKeyInput) sgoApiKeyInput.disabled = isBusy;
+  if (saveSgoApiKeyBtn) saveSgoApiKeyBtn.disabled = isBusy;
 }
 function dateMinusDays(base, days){ const d = new Date(base.getFullYear(), base.getMonth(), base.getDate()); d.setDate(d.getDate()-days); return d; }
 
@@ -2122,25 +2210,6 @@ function getOppositeMlbSide(side) {
 function escapeHtml(text) {
   return String(text ?? '').replace(/[&<>'\"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch]));
 }
-function summaryTimeText(iso) {
-  return new Intl.DateTimeFormat('zh-TW', { timeZone:'Asia/Taipei', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false }).format(new Date(iso));
-}
-function buildRecommendationSummaryData(payload, leftName, rightName, eventIso) {
-  const items = getRecommendationItemsFromPayload(payload, leftName, rightName);
-  if (!items.length) return null;
-  return {
-    league: payload['聯盟'] || '',
-    time: summaryTimeText(eventIso),
-    matchup: `${payload['客隊'] || leftName || '-'} vs ${payload['主隊'] || rightName || '-'}`,
-    market: (payload['亞洲讓分盤'] ? `亞洲讓分 ${payload['亞洲讓分盤']}` : '') || payload['主客讓分盤'] || (payload['讓分盤'] ? `讓分 ${payload['讓分盤']}` : '') || (payload['大小分盤'] ? `大小 ${payload['大小分盤']}` : ''),
-    items
-  };
-}
-function renderRecommendationSummary(rows) {
-  // 右上固定推薦總欄改由 MLB 自動匯入盤口流程同步，這裡保留給 NBA/摘要流程避免報錯。
-  return;
-}
-
 const MLB_FIXED_PICK_STORAGE_KEY = 'mlb_fixed_selected_picks_v1';
 function readMlbFixedPickRows() {
   try { return JSON.parse(localStorage.getItem(MLB_FIXED_PICK_STORAGE_KEY) || '[]'); }
@@ -2185,6 +2254,8 @@ function buildFixedPickPills(row, parsedPicks) {
     item.labels.forEach(label => {
       if (label.includes('一般場')) add(label, fixedPickLineClass(label));
       else if (label.includes('高品質') || label.includes('加注')) add(label, 'addon');
+      else if (label.includes('甜盤') || label.includes('受讓照實盤') || label.includes('讓分1+或受讓')) add(label, 'sweet');
+      else if (label.includes('小分盤升高') || label.includes('大分盤下降')) add(label, 'total');
     });
   });
   if (row.source) add(row.source, 'source');
@@ -2610,10 +2681,10 @@ function getPlaySportFetchCandidates(confKey, offsetDays) {
   ]);
 
   return uniqueList([
-    ...jinaUrls,
     `${CLOUD_API_BASE}/playsport/asian?league=${encodeURIComponent(confKey)}&allianceid=${encodeURIComponent(cfg.allianceid)}&gameday=${encodeURIComponent(gameday)}&date=${encodeURIComponent(targetDate)}&url=${encodeURIComponent(firstUrl)}&_=${encodeURIComponent(bust)}`,
     `${CLOUD_API_BASE}/proxy/playsport?league=${encodeURIComponent(confKey)}&allianceid=${encodeURIComponent(cfg.allianceid)}&gameday=${encodeURIComponent(gameday)}&date=${encodeURIComponent(targetDate)}&url=${encodeURIComponent(firstUrl)}&_=${encodeURIComponent(bust)}`,
     `${CLOUD_API_BASE}/proxy/url?url=${encodeURIComponent(firstUrl)}`,
+    ...jinaUrls,
     ...corsProxyUrls,
     ...directUrls
   ]);
@@ -2840,14 +2911,10 @@ function hasNbaOpenFavoriteMatchesExcelDog(market) {
 function buildNbaRefinedSupplementPicks(left, right, market, originalPicks={}) {
   const isNum = v => v !== null && v !== undefined && Number.isFinite(Number(v));
   const between = (v, a, b) => isNum(v) && Number(v) >= a && Number(v) <= b;
-  const nbaSprintDisableLowEfficiencySupplements = true;
   const homeNet = right.netAll;
   const awayNet = left.netAll;
   const homePace = right.sumAll;
   const awayPace = left.sumAll;
-  const paceSum = (isNum(homePace) && isNum(awayPace)) ? Number(homePace) + Number(awayPace) : null;
-  const homeAwayPaceDiff = (isNum(homePace) && isNum(awayPace)) ? Number(homePace) - Number(awayPace) : null;
-  const netSum = (isNum(homeNet) && isNum(awayNet)) ? Number(homeNet) + Number(awayNet) : null;
   const spreadLine = market?.spread !== null && market?.spread !== undefined ? Number(market.spread) : null;
   const totalLine = market?.total !== null && market?.total !== undefined ? Number(market.total) : null;
   const m = getNbaModelSideInfo(left, right);
@@ -2877,28 +2944,6 @@ function buildNbaRefinedSupplementPicks(left, right, market, originalPicks={}) {
       isNum(m.favoritePace) && Number(m.favoritePace) <= 239.65 &&
       isNum(m.modelAwayScore) && Number(m.modelAwayScore) > 114.425) {
     setTotal('大分', '補洞1｜模型主分≤117.075＋主節奏高＋客預估分高');
-  }
-
-  // 補洞3：買客隊
-  if (!nbaSprintDisableLowEfficiencySupplements &&
-      isNum(m.favoriteNetDiff) && Number(m.favoriteNetDiff) > -2.85 &&
-      isNum(homeAwayPaceDiff) && Number(homeAwayPaceDiff) > 0.75 &&
-      isNum(paceSum) && Number(paceSum) > 472.25) {
-    setSpread(`${left.name} ${m.favoriteSide === 'left' ? '讓分' : '受讓'}`, '補洞3｜節奏和高＋主客節奏差｜買客隊');
-  }
-
-  // 補洞4：大分
-  if (!nbaSprintDisableLowEfficiencySupplements &&
-      isNum(m.modelHomeScore) && Number(m.modelHomeScore) <= 117.075 &&
-      isNum(homePace) && Number(homePace) > 238.55 &&
-      isNum(awayNet) && Number(awayNet) > 2.95) {
-    setTotal('大分', '補洞4｜主預估分低＋主節奏高＋客淨值強');
-  }
-
-  // 補洞5：模型受讓方
-  if (!nbaSprintDisableLowEfficiencySupplements &&
-      isNum(homeNet) && Number(homeNet) > 9.95 && between(netSum, 7.15, 10.65)) {
-    setSpread(`${m.underdogName} 受讓`, '補洞5｜強主隊區間反買模型受讓方');
   }
 
   // 補洞6：小分
@@ -3196,6 +3241,14 @@ function buildNear10Card(leagueName, leagueKey, event, teamStatsMap, playSportMa
     'MLB大小分說明': leagueKey === 'mlb' ? (picks.mlbTotalReason || '') : '',
     'MLB大小分待觀察': leagueKey === 'mlb' && Array.isArray(picks.mlbTotalWatchCandidates) ? picks.mlbTotalWatchCandidates.join('|') : '',
     'MLB初盤大小分': leagueKey === 'mlb' && isFiniteNum(picks.mlbTotalLine) ? round1(picks.mlbTotalLine) : '',
+    'MLB944原始推薦隊': leagueKey === 'mlb' ? (existingPayload?.['MLB944原始推薦隊'] || '') : '',
+    'MLB944原始盤型': leagueKey === 'mlb' ? (existingPayload?.['MLB944原始盤型'] || '') : '',
+    'MLB944原始標籤': leagueKey === 'mlb' ? (existingPayload?.['MLB944原始標籤'] || '') : '',
+    'MLB944甜盤標籤': '',
+    'MLB944大小原始推薦': leagueKey === 'mlb' ? (existingPayload?.['MLB944大小原始推薦'] || '') : '',
+    'MLB944大小原始盤': leagueKey === 'mlb' ? (existingPayload?.['MLB944大小原始盤'] || '') : '',
+    'MLB944大小原始標籤': leagueKey === 'mlb' ? (existingPayload?.['MLB944大小原始標籤'] || '') : '',
+    'MLB944大小甜盤標籤': '',
     'MLB模型總分': leagueKey === 'mlb' && isFiniteNum(picks.mlbModelTotal) ? round1(picks.mlbModelTotal) : '',
     'MLB小分差': leagueKey === 'mlb' && isFiniteNum(picks.mlbTotalEdgeUnder) ? round1(picks.mlbTotalEdgeUnder) : '',
     'MLB初盤RunLine熱門水位': leagueKey === 'mlb' && isFiniteNum(picks.mlbOpenSpreadFavoriteOdds) ? picks.mlbOpenSpreadFavoriteOdds : '',
@@ -3207,7 +3260,9 @@ function buildNear10Card(leagueName, leagueKey, event, teamStatsMap, playSportMa
     'MLB新邏輯實盤': leagueKey === 'mlb' ? (picks.mlbNewLogicLine || picks.mlbTwLotteryLine || '') : '',
     'NBA加注規則': leagueKey === 'nba' ? (picks.nbaAddOnRuleKeys || '') : '',
     'NBA加注標籤': leagueKey === 'nba' ? (picks.nbaAddOnTag || '') : '',
-    '大小分盤': existingPayload && Object.prototype.hasOwnProperty.call(existingPayload, '大小分盤') ? existingPayload['大小分盤'] : (leagueKey === 'mlb' && isFiniteNum(picks.mlbTotalLine) ? round1(picks.mlbTotalLine) : (market.total != null ? round1(market.total) : '')),
+    '大小分盤': leagueKey === 'mlb'
+      ? (isFiniteNum(picks.mlbTotalLine) ? round1(picks.mlbTotalLine) : (existingPayload && Object.prototype.hasOwnProperty.call(existingPayload, '大小分盤') ? existingPayload['大小分盤'] : ''))
+      : (existingPayload && Object.prototype.hasOwnProperty.call(existingPayload, '大小分盤') ? existingPayload['大小分盤'] : (market.total != null ? round1(market.total) : '')),
     '客隊近10場平均得分': left.avgAll ? round1(left.avgAll.pf) : '',
     '客隊近10場平均失分': left.avgAll ? round1(left.avgAll.pa) : '',
     '客隊近10場平均淨值': awayNetText,
@@ -3265,6 +3320,7 @@ function buildNear10Card(leagueName, leagueKey, event, teamStatsMap, playSportMa
       payload['MLB盤口判斷'] = '未抓到Playsport亞洲盤口，PASS';
       payload['MLB待觀察候選'] = '';
     }
+    applyMlbTwLotterySweetAsianDecision(payload);
   }
   if (leagueKey === 'nba') {
     payload['NBA加注規則'] = picks.nbaAddOnRuleKeys || '';
@@ -3289,11 +3345,8 @@ function buildNear10Card(leagueName, leagueKey, event, teamStatsMap, playSportMa
 
   if (leagueKey === 'mlb') {
     // MLB 融合驗證版：正式讓分推薦需要 Playsport 實際亞洲盤口；盤前候選列入待觀察。
-    mlbBasePicksByGameId.set(gameId, { rule1: picks.rule1, rule2: 'PASS', rule3: picks.rule3 });
     payload['MLB符合規則直接顯示'] = hasAnyPick ? 'YES' : '';
     mlbPayloadByGameId.set(gameId, payload);
-    mlbEventByGameId.set(gameId, event);
-    mlbMarketByGameId.set(gameId, market);
   }
 
   payload['規則1讓分結果'] = judgePickResultForPayload(event, market, payload['規則1讓分推薦'], left.name, right.name, payload);
@@ -3303,7 +3356,7 @@ function buildNear10Card(leagueName, leagueKey, event, teamStatsMap, playSportMa
   }
   payload['規則2讓分結果'] = judgePickResultForPayload(event, market, payload['規則2讓分推薦'], left.name, right.name, payload);
   payload['規則3讓分結果'] = judgePickResultForPayload(event, market, payload['規則3讓分推薦'], left.name, right.name, payload);
-  payload['MLB新邏輯結果'] = leagueKey === 'mlb' ? judgeMlbTwLotteryRunlineResult(event, payload['MLB新邏輯推薦'], left.name, right.name) : '';
+  payload['MLB新邏輯結果'] = leagueKey === 'mlb' ? judgeMlbTwLotteryRunlineResult(event, payload['MLB新邏輯推薦'], left.name, right.name, payload) : '';
   payload['規則3大小結果'] = judgePickResult(event, market, payload['規則3大小推薦'], left.name, right.name);
   const totalResultMarket = leagueKey === 'mlb' && isFiniteNum(picks.mlbTotalLine) ? { ...market, total:Number(picks.mlbTotalLine) } : market;
   payload['規則4大小結果'] = judgePickResult(event, totalResultMarket, payload['規則4大小推薦'], left.name, right.name);
@@ -3444,11 +3497,12 @@ function buildNear10Card(leagueName, leagueKey, event, teamStatsMap, playSportMa
     <div class="bet-box">
       <div class="mlb-pick-display">${betHtml}</div>
     </div>`;
-  card.__recommendationSummary = buildRecommendationSummaryData(payload, left.name, right.name, event.date);
   return card;
 }
 
 async function loadGames(offsetDays) {
+  const runToken = ++loadGamesRunToken;
+  const isCurrentRun = () => runToken === loadGamesRunToken;
   currentOffsetDays = offsetDays;
   stopPlaySportBackgroundRetry();
   scoreboardCache.clear();
@@ -3459,7 +3513,6 @@ async function loadGames(offsetDays) {
     resetSyncState();
     near10ContentEl.innerHTML = '';
     resetMlbFixedPickRowsForCurrentUpdate();
-    renderRecommendationSummary([]);
     statusEl.textContent = '更新中...';
     near10StatusEl.textContent = '更新中...';
     setPlaySportStatus('待命', 'muted');
@@ -3475,16 +3528,17 @@ async function loadGames(offsetDays) {
     if (!leagues.some(conf => conf.key === 'mlb')) setPlaySportStatus('未勾選 MLB', 'muted');
 
     await withTimeout(preloadExistingRowsForLeagues(leagues), 9000, null);
+    if (!isCurrentRun()) return;
 
     let totalMatches = 0;
     let filledRows = 0;
-    const recommendationSummaries = [];
     const playSportMarketsByLeague = {};
 
     for (const conf of leagues) {
       if (conf.key === 'mlb') {
         setPlaySportStatus(`匯入 ${conf.name} ${targetTaipeiDateKey} 亞洲盤口中...`, 'status-warn');
         playSportMarketsByLeague[conf.key] = await fetchPlaySportAsianMarkets(conf.key, offsetDays);
+        if (!isCurrentRun()) return;
       }
       statusEl.textContent = `更新中：抓 ${conf.name} 台灣 ${targetTaipeiDateKey} 賽程...`;
       const rawEventGroups = await Promise.all(
@@ -3493,6 +3547,7 @@ async function loadGames(offsetDays) {
           return [];
         }))
       );
+      if (!isCurrentRun()) return;
       const rawEvents = mergeEventsById(rawEventGroups);
       const taipeiDateEvents = rawEvents.filter(ev => toTaipeiDateKey(ev?.date) === targetTaipeiDateKey);
       const officialEvents = taipeiDateEvents.filter(ev => (ev.competitions?.[0]?.competitors || []).length >= 2 && isOfficialGame(conf, ev));
@@ -3522,10 +3577,14 @@ async function loadGames(offsetDays) {
 
       if (conf.key === 'mlb') {
         await fetchEspnMlbOpeningOdds(targetTaipeiDateKey);
+        if (!isCurrentRun()) return;
         await fetchSportsGameOddsOpeningMarkets(events, targetTaipeiDateKey, 'mlb');
+        if (!isCurrentRun()) return;
       } else if (conf.key === 'nba') {
         await fetchEspnNbaOpeningOdds(targetTaipeiDateKey);
+        if (!isCurrentRun()) return;
         await fetchSportsGameOddsOpeningMarkets(events, targetTaipeiDateKey, 'nba');
+        if (!isCurrentRun()) return;
       }
 
       for (let idx=0; idx<events.length; idx++) {
@@ -3537,20 +3596,18 @@ async function loadGames(offsetDays) {
         const statsEntries = await Promise.all(
           competitors.map(async c => [String(c.team.id), await getTeamRecentGamesByScoreboards(conf, c.team.id, event.date)])
         );
+        if (!isCurrentRun()) return;
 
         const teamStatsMap = new Map(statsEntries);
         for (const [, stats] of statsEntries) if (stats.length) filledRows++;
 
         const near10Card = buildNear10Card(conf.name, conf.key, event, teamStatsMap, playSportMarketsByLeague[conf.key] || []);
         if (near10Card) {
-          if (near10Card.__recommendationSummary) recommendationSummaries.push(near10Card.__recommendationSummary);
           near10ContentEl.appendChild(near10Card);
           totalMatches++;
         }
       }
     }
-
-    renderRecommendationSummary(recommendationSummaries);
 
     if (!totalMatches) {
       const targetLabel = targetTaipeiDateKey;
@@ -3570,11 +3627,12 @@ async function loadGames(offsetDays) {
     }
 
     const backfillInfo = await backfillPendingResults(leagues);
+    if (!isCurrentRun()) return;
     statusEl.textContent = `最後更新：${taiwanTime()}｜回填 ${backfillInfo.totalUpdated}/${backfillInfo.totalPending}`;
     near10StatusEl.textContent = `最後更新：${taiwanTime()}｜回填 ${backfillInfo.totalUpdated}/${backfillInfo.totalPending}`;
   } catch (err) {
+    if (!isCurrentRun()) return;
     console.error(err);
-    renderRecommendationSummary([]);
     if (previousNear10Html) {
       near10ContentEl.innerHTML = previousNear10Html;
       near10ContentEl.insertAdjacentHTML('afterbegin', `<div class="error">本輪更新失敗，已保留上一輪成功畫面。若反覆失敗，多半是瀏覽器或代理暫時擋住外部請求。</div>`);
@@ -3587,18 +3645,19 @@ async function loadGames(offsetDays) {
     near10StatusEl.textContent = '更新失敗';
     if (syncState.success === 0 && syncState.failed === 0) setCloudStatus('本輪未送出', 'status-warn');
   } finally {
-    setBusy(false);
+    if (isCurrentRun()) setBusy(false);
   }
 }
-todayBtn.addEventListener('click', ()=>loadGames(0));
-tomorrowBtn.addEventListener('click', ()=>loadGames(1));
+todayBtn.addEventListener('click', ()=>{ if (!loadGamesInProgress) loadGames(0); });
+tomorrowBtn.addEventListener('click', ()=>{ if (!loadGamesInProgress) loadGames(1); });
 if (saveSgoApiKeyBtn) saveSgoApiKeyBtn.addEventListener('click', () => {
+  if (loadGamesInProgress) return;
   setSportsGameOddsApiKey(sgoApiKeyInput?.value || '');
   clearMlbOpeningFavoriteCache();
   setPlaySportStatus('SportsGameOdds Key 已儲存；下次更新會用外部美式初盤', 'status-good');
 });
-nbaToggle.addEventListener('change', ()=>{ loadGames(currentOffsetDays); if (!statsPage.classList.contains('hidden')) updateRecordSummary(); });
-mlbToggle.addEventListener('change', ()=>{ loadGames(currentOffsetDays); if (!statsPage.classList.contains('hidden')) updateRecordSummary(); });
+nbaToggle.addEventListener('change', ()=>{ if (!loadGamesInProgress) loadGames(currentOffsetDays); if (!statsPage.classList.contains('hidden')) updateRecordSummary(); });
+mlbToggle.addEventListener('change', ()=>{ if (!loadGamesInProgress) loadGames(currentOffsetDays); if (!statsPage.classList.contains('hidden')) updateRecordSummary(); });
 if (near10TabBtn) near10TabBtn.addEventListener('click', ()=>setActivePage('near10'));
 statsTabBtn.addEventListener('click', ()=>setActivePage('stats'));
 
@@ -3685,7 +3744,7 @@ function buildMlbMarketInlineCellHtml(gameId, side) {
       </div>
     </div>`;
 }
-/* ===== MLB 944 攻擊版 + TW -1.5；補空窗受讓策略已停用 ===== */
+/* ===== MLB 944 攻擊版 + TW -1.5 ===== */
 function getMlb944TotalDecision(metrics, market) {
   const totalLine = isFiniteNum(market?.openTotal) ? Number(market.openTotal) : (isFiniteNum(market?.total) ? Number(market.total) : null);
   const modelTotal = (isFiniteNum(metrics?.expAway) && isFiniteNum(metrics?.expHome)) ? Number(metrics.expAway) + Number(metrics.expHome) : null;
@@ -3922,6 +3981,154 @@ function getMlbTwLotteryRunlineDecision(metrics, market, left, right) {
     line:'運彩-1.5',
     reason:`新邏輯命中｜${labels.join(' + ')}｜推薦${sideName(pickSide)} 運彩盤 -1.5`
   };
+}
+
+function getMlbTeamSideFromPick(payload, pick) {
+  const teamName = String(pick || '').replace(/\s*(讓分|受讓)\s*$/, '').trim();
+  const awayName = String(payload?.['客隊'] || '').trim();
+  const homeName = String(payload?.['主隊'] || '').trim();
+  if (teamName && teamName === awayName) return { teamName, side:'away' };
+  if (teamName && teamName === homeName) return { teamName, side:'home' };
+  return { teamName, side:'' };
+}
+
+const MLB_944_SPREAD_SWEET_ORDER = ['give2-','give2+','give1-','give1+','take1+','take1-','take2+','take2-'];
+const MLB_944_SPREAD_SWEET_RANK = Object.fromEntries(MLB_944_SPREAD_SWEET_ORDER.map((key, idx) => [key, idx]));
+const MLB_944_BLOCKED_SWEET_TRANSITIONS = new Set(['give2-->give1-','take1+->take2+','take1+->take2-']);
+function getMlb944BucketText(bucket) {
+  const raw = String(bucket || '');
+  const match = raw.match(/^(give|take)(\d[+-])$/);
+  if (!match) return raw || '無';
+  return `${match[1] === 'give' ? '讓' : '受'}${match[2]}`;
+}
+function isMlb944SweetBucket(originalBucket, actualBucket) {
+  const originalRank = MLB_944_SPREAD_SWEET_RANK[String(originalBucket || '')];
+  const actualRank = MLB_944_SPREAD_SWEET_RANK[String(actualBucket || '')];
+  const transition = `${String(originalBucket || '')}->${String(actualBucket || '')}`;
+  return Number.isInteger(originalRank) &&
+    Number.isInteger(actualRank) &&
+    actualRank >= originalRank &&
+    !MLB_944_BLOCKED_SWEET_TRANSITIONS.has(transition);
+}
+function getMlb944ActualBucketForPick(payload, pick, asianLine) {
+  const info = getMlbAsianWaterInfo(asianLine);
+  const sideInfo = getMlbTeamSideFromPick(payload, pick);
+  if (!info.side || !info.points || !info.waterSign || !sideInfo.side) return '';
+  const role = sideInfo.side === info.side ? 'give' : 'take';
+  return `${role}${info.points}${info.waterSign}`;
+}
+function getMlb944StoredSpreadSweetDecision(payload, asianLine) {
+  const originalPick = String(payload?.['MLB944原始推薦隊'] || '').trim();
+  const originalBucket = String(payload?.['MLB944原始盤型'] || '').trim();
+  if (!originalPick || originalPick === 'PASS' || !originalBucket) return null;
+  const actualBucket = getMlb944ActualBucketForPick(payload, originalPick, asianLine);
+  if (!actualBucket) return null;
+  if (!isMlb944SweetBucket(originalBucket, actualBucket)) {
+    return {
+      ok:false,
+      actualBucket,
+      reason:`944原始命中${getMlb944BucketText(originalBucket)}，目前${getMlb944BucketText(actualBucket)}未在甜蜜區`
+    };
+  }
+  const sideInfo = getMlbTeamSideFromPick(payload, originalPick);
+  const role = actualBucket.startsWith('take') ? '受讓' : '讓分';
+  return {
+    ok:true,
+    pick:`${sideInfo.teamName} ${role}`,
+    role:actualBucket.startsWith('take') ? 'take' : 'give',
+    actualBucket,
+    originalBucket,
+    label:`944甜盤延續｜${getMlb944BucketText(originalBucket)}→${getMlb944BucketText(actualBucket)}`,
+    reason:`944原始推薦${originalPick}｜原盤${getMlb944BucketText(originalBucket)}｜實盤${getMlb944BucketText(actualBucket)}在甜蜜區`
+  };
+}
+function getMlb944TotalSweetDecision(payload) {
+  const originalPick = String(payload?.['MLB944大小原始推薦'] || '').trim();
+  const originalLine = toNum(payload?.['MLB944大小原始盤']);
+  const currentLine = toNum(payload?.['大小分盤']) ?? toNum(payload?.['MLB初盤大小分']);
+  if (!originalPick || originalPick === 'PASS' || !isFiniteNum(originalLine) || !isFiniteNum(currentLine)) return null;
+  const isUnder = originalPick === '小分';
+  const isOver = originalPick === '大分';
+  if (!isUnder && !isOver) return null;
+  const sweet = isUnder ? Number(currentLine) >= Number(originalLine) : Number(currentLine) <= Number(originalLine);
+  if (!sweet) {
+    return {
+      ok:false,
+      reason:`944大小原始${originalPick}${round1(originalLine)}，目前${round1(currentLine)}未在甜蜜區`
+    };
+  }
+  return {
+    ok:true,
+    pick:originalPick,
+    label:`944大小甜盤延續｜${originalPick}${round1(originalLine)}→${round1(currentLine)}`,
+    reason:`944大小原始命中${originalPick}${round1(originalLine)}，目前${round1(currentLine)}在甜蜜區`
+  };
+}
+
+function getMlbTwLotterySweetAsianDecision(payload, asianLine) {
+  const rawPick = String(payload?.['MLB新邏輯推薦'] || '').trim();
+  if (!rawPick || rawPick === 'PASS') return null;
+  const lineText = String(asianLine || '').trim();
+  if (!lineText || isMlbSkipAsianLine(lineText)) {
+    return {
+      ok:false,
+      keepOriginal:true,
+      line:'運彩-1.5',
+      reason:'新邏輯命中，等待Playsport亞洲盤口判斷甜盤'
+    };
+  }
+  const info = getMlbAsianWaterInfo(lineText);
+  const pickSideInfo = getMlbTeamSideFromPick(payload, rawPick);
+  if (!info.side || !info.points || !pickSideInfo.side) {
+    return {
+      ok:false,
+      line:info.raw || lineText,
+      reason:'新邏輯命中但亞洲盤口或推薦隊解析不足'
+    };
+  }
+  const actualRole = pickSideInfo.side === info.side ? 'give' : 'take';
+  const roleText = actualRole === 'take' ? '受讓' : '讓分';
+  const lineKind = `${info.points}${info.waterSign || ''}`;
+  const isGiveSweet = actualRole === 'give' && Number(info.points) === 1 && info.isPlus;
+  const isTakeSweet = actualRole === 'take';
+  const canBuy = isGiveSweet || isTakeSweet;
+  const baseSource = String(payload?.['MLB新邏輯來源'] || MLB_TW_LOTTERY_RUNLINE_SOURCE_LABEL).trim();
+  if (!canBuy) {
+    return {
+      ok:false,
+      line:info.raw || lineText,
+      reason:`新邏輯命中但實盤${roleText}${lineKind}不在甜盤區間｜可買：推薦隊讓分1+或受讓`
+    };
+  }
+  return {
+    ok:true,
+    pick:`${pickSideInfo.teamName} ${roleText}`,
+    line:info.raw || lineText,
+    source:`${baseSource}｜甜盤保護：實盤${roleText}${lineKind}`,
+    reason:`新邏輯命中＋實盤甜盤可買｜${pickSideInfo.teamName} ${roleText}｜實盤${info.raw || lineText}`
+  };
+}
+
+function applyMlbTwLotterySweetAsianDecision(payload) {
+  if (!payload || String(payload?.['聯盟'] || '').toUpperCase() !== 'MLB') return;
+  const rawPick = String(payload['MLB新邏輯推薦'] || '').trim();
+  if (!rawPick || rawPick === 'PASS') return;
+  const decision = getMlbTwLotterySweetAsianDecision(payload, payload['亞洲讓分盤']);
+  if (!decision) return;
+  payload['MLB新邏輯甜盤判斷'] = decision.reason || '';
+  if (decision.keepOriginal) {
+    payload['MLB新邏輯來源'] = `${payload['MLB新邏輯來源'] || MLB_TW_LOTTERY_RUNLINE_SOURCE_LABEL}｜等待亞洲盤甜盤`;
+    payload['MLB新邏輯實盤'] = decision.line || '運彩-1.5';
+    return;
+  }
+  payload['MLB新邏輯實盤'] = decision.line || '';
+  if (decision.ok) {
+    payload['MLB新邏輯推薦'] = decision.pick;
+    payload['MLB新邏輯來源'] = decision.source || payload['MLB新邏輯來源'] || MLB_TW_LOTTERY_RUNLINE_SOURCE_LABEL;
+  } else {
+    payload['MLB新邏輯推薦'] = 'PASS';
+    payload['MLB新邏輯來源'] = decision.reason || '新邏輯命中但實盤不在甜盤區間';
+  }
 }
 
 function getMlbFusionPreMarketCandidates(left, right, metrics) {
@@ -4293,7 +4500,8 @@ function getMlb944SpreadDecision(ctx) {
   pushSideHit(
     betweenClosed(ctx.modelFavoritePaceDiff, -8, 0) &&
     betweenClosed(ctx.totalLine, 6, 7.5) &&
-    openFavRole === 'take',
+    openFavRole === 'take' &&
+    ctx.openSpreadFavoriteSide !== ctx.modelFavoriteSide,
     '944補強04｜讓分盤熱門｜模型熱門節奏差-8~0｜初盤6~7.5｜實盤受讓',
     ctx.openSpreadFavoriteSide,
     2810
@@ -4328,23 +4536,6 @@ function getMlb944SpreadDecision(ctx) {
     '944BOOST02｜model_fav｜take1+｜underEdge1-6｜water0.45-0.69',
     ctx.modelFavoriteSide,
     2750
-  );
-  pushSideHit(
-    openFavRole === 'give' &&
-    betweenClosed(ctx.openSpreadFavoritePaceDiff, -12, -2) &&
-    betweenClosed(totalEdgeUnder, 0, 4),
-    '944BOOST03｜spread_fav｜give｜favPaceDiff-12--2｜underEdge0-4',
-    ctx.openSpreadFavoriteSide,
-    2740
-  );
-  pushSideHit(
-    betweenClosed(ctx.strength, -12, -2) &&
-    !lowProfitBlock944 &&
-    betweenClosed(opponentWaterForSide(ctx.openSpreadFavoriteSide), 0.7, 0.89) &&
-    betweenClosed(ctx.netSum, -4, 4),
-    '944BOOST04｜spread_fav｜strength-12--2｜oppWater0.70-0.89｜netSum-4-4',
-    ctx.openSpreadFavoriteSide,
-    2730
   );
   const buildWatchCandidates = () => {
     const rows = [];
@@ -4411,7 +4602,8 @@ function getMlb944SpreadDecision(ctx) {
     );
     addWatch(
       betweenClosed(ctx.modelFavoritePaceDiff, -8, 0) &&
-      betweenClosed(ctx.totalLine, 6, 7.5),
+      betweenClosed(ctx.totalLine, 6, 7.5) &&
+      ctx.openSpreadFavoriteSide !== ctx.modelFavoriteSide,
       '944補強04｜讓分盤熱門｜模型熱門節奏差-8~0｜初盤6~7.5｜實盤受讓',
       ctx.openSpreadFavoriteSide,
       'take',
@@ -4444,15 +4636,6 @@ function getMlb944SpreadDecision(ctx) {
       'take',
       '1+',
       2750
-    );
-    addWatch(
-      betweenClosed(ctx.openSpreadFavoritePaceDiff, -12, -2) &&
-      betweenClosed(totalEdgeUnder, 0, 4),
-      '944BOOST03｜spread_fav｜give｜favPaceDiff-12--2｜underEdge0-4',
-      ctx.openSpreadFavoriteSide,
-      'give',
-      '',
-      2740
     );
     return rows
       .sort((a,b) => Number(b.priority || 0) - Number(a.priority || 0))
@@ -4509,16 +4692,13 @@ function setMlbRuntimePayloadMeta(payload, key, value) {
 
 function applyMlbActualMarketDecision(payload, asianLine) {
   const ctx = getMlb944ActualContext(payload, asianLine);
-  const spreadDecision = getMlb944SpreadDecision(ctx);
-  const decision = spreadDecision.ok
-    ? spreadDecision
-    : {
-      ok:false,
-      reason:`補空窗受讓策略已停用｜${spreadDecision.reason || '944實盤讓分未命中'}`,
-      hits:[],
-      watchCandidates:Array.isArray(spreadDecision.watchCandidates) ? spreadDecision.watchCandidates : []
-    };
+  const decision = getMlb944SpreadDecision(ctx);
+  const storedSpreadSweet = getMlb944StoredSpreadSweetDecision(payload, asianLine);
+  const totalSweet = getMlb944TotalSweetDecision(payload);
   const hitTags = [];
+  let decisionReason = decision.reason;
+  let decisionPickText = decision.normalizedPick || 'PASS';
+  let decisionOk = decision.ok;
   payload['規則1讓分推薦'] = 'PASS';
   payload['規則2讓分推薦'] = 'PASS';
   payload['規則3讓分推薦'] = 'PASS';
@@ -4526,7 +4706,20 @@ function applyMlbActualMarketDecision(payload, asianLine) {
   payload['MLB加注標籤'] = '';
   payload['MLB補洞標籤'] = '';
   payload['MLB待觀察候選'] = '';
+  payload['MLB944甜盤標籤'] = '';
+  payload['MLB944大小甜盤標籤'] = '';
   if (decision.ok) {
+    const currentBucket = getMlb944ActualBucketForPick(payload, decision.normalizedPick, asianLine);
+    const storedOriginalPick = String(payload['MLB944原始推薦隊'] || '').trim();
+    const storedOriginalBucket = String(payload['MLB944原始盤型'] || '').trim();
+    if (currentBucket && (!storedOriginalPick || storedOriginalPick !== decision.normalizedPick || !storedOriginalBucket)) {
+      payload['MLB944原始推薦隊'] = decision.normalizedPick;
+      payload['MLB944原始盤型'] = currentBucket;
+      payload['MLB944原始標籤'] = decision.quality || '';
+    } else if (currentBucket && storedOriginalBucket && isMlb944SweetBucket(storedOriginalBucket, currentBucket) && storedOriginalBucket !== currentBucket) {
+      payload['MLB944甜盤標籤'] = `944甜盤延續｜${getMlb944BucketText(storedOriginalBucket)}→${getMlb944BucketText(currentBucket)}`;
+      hitTags.push(payload['MLB944甜盤標籤']);
+    }
     if (decision.role === 'take') {
       payload['規則1讓分推薦'] = decision.normalizedPick;
       payload['MLB加注標籤'] = decision.quality;
@@ -4535,10 +4728,40 @@ function applyMlbActualMarketDecision(payload, asianLine) {
       payload['MLB補洞標籤'] = decision.quality;
     }
     hitTags.push(...decision.hits.map(x => x.label));
+  } else if (storedSpreadSweet?.ok) {
+    if (storedSpreadSweet.role === 'take') {
+      payload['規則1讓分推薦'] = storedSpreadSweet.pick;
+      payload['MLB加注標籤'] = storedSpreadSweet.label;
+    } else {
+      payload['規則3讓分推薦'] = storedSpreadSweet.pick;
+      payload['MLB補洞標籤'] = storedSpreadSweet.label;
+    }
+    payload['MLB944甜盤標籤'] = storedSpreadSweet.label;
+    hitTags.push(storedSpreadSweet.label);
+    decisionReason = storedSpreadSweet.reason;
+    decisionPickText = storedSpreadSweet.pick;
+    decisionOk = true;
   }
   payload['MLB待觀察候選'] = Array.isArray(decision.watchCandidates) ? decision.watchCandidates.join('|') : '';
   if (payload['規則4大小推薦'] && payload['規則4大小推薦'] !== 'PASS') {
+    const currentTotalLine = toNum(payload['大小分盤']) ?? toNum(payload['MLB初盤大小分']);
+    const storedTotalPick = String(payload['MLB944大小原始推薦'] || '').trim();
+    const storedTotalLine = toNum(payload['MLB944大小原始盤']);
+    if (!storedTotalPick || storedTotalPick !== payload['規則4大小推薦'] || !isFiniteNum(storedTotalLine)) {
+      payload['MLB944大小原始推薦'] = payload['規則4大小推薦'];
+      payload['MLB944大小原始盤'] = isFiniteNum(currentTotalLine) ? round1(currentTotalLine) : '';
+      payload['MLB944大小原始標籤'] = payload['MLB大小分標籤'] || '944大小分';
+    } else if (totalSweet?.ok && isFiniteNum(currentTotalLine) && Number(currentTotalLine) !== Number(storedTotalLine)) {
+      payload['MLB944大小甜盤標籤'] = totalSweet.label;
+      hitTags.push(totalSweet.label);
+    }
     hitTags.push(...String(payload['MLB大小分標籤'] || '944大小分').split(/\s*\+\s*/).filter(Boolean));
+  } else if (totalSweet?.ok) {
+    payload['規則4大小推薦'] = totalSweet.pick;
+    payload['MLB大小分標籤'] = totalSweet.label;
+    payload['MLB大小分說明'] = totalSweet.reason;
+    payload['MLB944大小甜盤標籤'] = totalSweet.label;
+    hitTags.push(totalSweet.label);
   }
   const hasTakePick = payload['規則1讓分推薦'] && payload['規則1讓分推薦'] !== 'PASS';
   const hasGivePick = payload['規則3讓分推薦'] && payload['規則3讓分推薦'] !== 'PASS';
@@ -4548,12 +4771,12 @@ function applyMlbActualMarketDecision(payload, asianLine) {
     payload['MLB主推標籤'] = '';
     payload['MLB加注標籤'] = '';
     payload['MLB補洞標籤'] = '';
-    payload['MLB盤口判斷'] = `同場同時命中讓分與受讓，對打PASS｜${decision.reason}`;
+    payload['MLB盤口判斷'] = `同場同時命中讓分與受讓，對打PASS｜${decisionReason}`;
     payload['MLB規則命中'] = Array.from(new Set(hitTags.filter(Boolean))).join('|');
     payload['MLB讓分有量標籤'] = '';
     return payload['規則4大小推薦'] && payload['規則4大小推薦'] !== 'PASS';
   }
-  payload['MLB盤口判斷'] = `${decision.isMainPick ? 'MLB主推亞洲盤口' : 'MLB融合實盤讓分'}｜${decision.normalizedPick || 'PASS'}：${decision.ok ? '買' : 'PASS'}｜${decision.reason}`;
+  payload['MLB盤口判斷'] = `${decision.isMainPick ? 'MLB主推亞洲盤口' : 'MLB融合實盤讓分'}｜${decisionPickText}：${decisionOk ? '買' : 'PASS'}｜${decisionReason}`;
   payload['MLB規則命中'] = Array.from(new Set(hitTags.filter(Boolean))).join('|');
   payload['MLB讓分有量標籤'] = '';
   return ['規則1讓分推薦','規則3讓分推薦','規則4大小推薦'].some(key => payload[key] && payload[key] !== 'PASS');
@@ -4595,24 +4818,26 @@ function buildMlbFusionRecommendationItems(payload) {
     }
     return sources;
   };
-  const addItem = (key, labelBase, sourceText, pick) => {
+  const addItem = (key, labelBase, sourceText, pick, hint='') => {
     const s = String(pick || 'PASS').trim();
     if (!s || s === 'PASS') return;
     const sources = enrichSources(labelBase, sourceText);
     if (seen.has(key)) {
       const item = seen.get(key);
+      if (hint && !item.hints.includes(hint)) item.hints.push(hint);
       sources.forEach(src => {
         if (src && !item.sources.includes(src)) item.sources.push(src);
       });
-      item.label = `${item.labelBase}｜來源：${item.sources.join(' + ')}`;
+      item.label = `${item.labelBase}${item.hints.length ? `｜${item.hints.join('｜')}` : ''}｜來源：${item.sources.join(' + ')}`;
       return;
     }
     const item = {
       key,
       labelBase,
+      hints: hint ? [hint] : [],
       sources,
       pick:s,
-      label:`${labelBase}｜來源：${sources.length ? sources.join(' + ') : '融合規則'}`
+      label:`${labelBase}${hint ? `｜${hint}` : ''}｜來源：${sources.length ? sources.join(' + ') : '融合規則'}`
     };
     seen.set(key, item);
     items.push(item);
@@ -4628,11 +4853,11 @@ function buildMlbFusionRecommendationItems(payload) {
       const label = mainTag
         ? `MLB主推｜亞洲盤口鎖參版｜${lineTag}｜受讓`
         : `MLB融合推薦｜讓分盤｜${lineTag}｜受讓`;
-      addItem(`spread|take|${lineTag}|${takePick}`, label, sources, takePick);
+      addItem(`spread|take|${lineTag}|${takePick}`, label, sources, takePick, payload?.['MLB944甜盤標籤'] || '944受讓照實盤可買');
     }
     if (hasGivePick) {
       const sources = payload?.['MLB補洞標籤'] || payload?.['MLB規則命中'] || '融合讓分';
-      addItem(`spread|give|${lineTag}|${givePick}`, `MLB融合推薦｜讓分盤｜${lineTag}｜讓分`, sources, givePick);
+      addItem(`spread|give|${lineTag}|${givePick}`, `MLB融合推薦｜讓分盤｜${lineTag}｜讓分`, sources, givePick, payload?.['MLB944甜盤標籤'] || '944讓分補強才買');
     }
   }
   const totalPick = payload?.['規則4大小推薦'];
@@ -4640,7 +4865,10 @@ function buildMlbFusionRecommendationItems(payload) {
     const totalLine = String(payload?.['大小分盤'] || payload?.['MLB初盤大小分'] || '').trim();
     const totalTag = totalLine ? `大小${totalLine}` : '大小分';
     const sources = payload?.['MLB大小分標籤'] || '融合大小分';
-    addItem(`total|${totalTag}|${totalPick}`, `MLB融合推薦｜${totalTag}`, sources, totalPick);
+    const totalHint = payload?.['MLB944大小甜盤標籤'] || (totalPick === '小分'
+      ? '小分甜盤-盤口升高更甜'
+      : (totalPick === '大分' ? '大分甜盤-盤口下降更甜' : '大小分照實盤'));
+    addItem(`total|${totalTag}|${totalPick}`, `MLB融合推薦｜${totalTag}`, sources, totalPick, totalHint);
   }
   const twLotteryPick = payload?.['MLB新邏輯推薦'];
   if (twLotteryPick && twLotteryPick !== 'PASS') {
@@ -4650,7 +4878,8 @@ function buildMlbFusionRecommendationItems(payload) {
       `spread|twlottery|-1.5|${twLotteryTag}|${twLotteryPick}`,
       `MLB新邏輯｜運彩盤-1.5甜盤｜${twLotteryTag}`,
       payload?.['MLB新邏輯來源'] || MLB_TW_LOTTERY_RUNLINE_SOURCE_LABEL,
-      twLotteryPick
+      twLotteryPick,
+      '甜盤可買-讓分1+或受讓'
     );
   }
   return items;
@@ -4684,6 +4913,9 @@ function getMlbSelectedPickTexts(payload) {
 }
 
 setActivePage('near10');
+refreshStrategyStatus();
+checkCloudHealth();
+setInterval(checkCloudHealth, 300000);
 loadGames(0);
 let __lastTaipeiAutoDateKey = getTaipeiDateKeyWithOffset(0);
 setInterval(() => {
@@ -4691,9 +4923,17 @@ setInterval(() => {
   if (nowKey !== __lastTaipeiAutoDateKey) {
     __lastTaipeiAutoDateKey = nowKey;
     playsportMarketCache.clear();
-    loadGames(currentOffsetDays);
+    if (!loadGamesInProgress) loadGames(currentOffsetDays);
   }
 }, 60000);
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('/service-worker.js')
+      .catch(err => console.warn('service worker register failed', err));
+  });
+}
 
 
 <!-- MLB：944乾淨版為唯一active主策略；944主板 + 944補強；薄利規則不進；同場多規則取最高優先權。 -->
