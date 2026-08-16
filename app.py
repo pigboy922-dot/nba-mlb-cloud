@@ -35,6 +35,29 @@ GOOGLE_SERVICE_ACCOUNT_JSON = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "").
 # Default fallback worksheet name. Normal writes use dynamic tabs like mlb_2026 / nba_2025.
 GOOGLE_SHEET_NAME = "results"
 
+# C1/E1 is a zero-stake observer ledger.  It deliberately has no shared
+# storage, worksheet, or helper with the formal NBA/MLB result ledger below.
+OBSERVER_TARGET_TAB = "MLB_C1E1_觀察統計"
+OBSERVER_SCHEMA_VERSION = 1
+OBSERVER_COLUMNS = [
+    "觀察ID", "觀察腿", "聯盟", "比賽日期", "對戰", "客隊", "主隊", "最終比分",
+    "讓分盤", "主客讓分盤", "即時盤口", "亞洲讓分盤", "有無過盤", "勝率統計",
+    "觀察方向", "方向側", "比賽ID", "客隊ID", "主隊ID", "凍結時間", "開賽時間",
+    "結算狀態", "同步狀態", "目標分頁", "規則說明",
+]
+OBSERVER_IDENTITY_FIELDS = (
+    "觀察ID", "觀察腿", "聯盟", "比賽日期", "對戰", "客隊", "主隊", "比賽ID",
+    "客隊ID", "主隊ID", "讓分盤", "主客讓分盤", "即時盤口", "亞洲讓分盤",
+    "觀察方向", "方向側", "凍結時間", "開賽時間", "目標分頁", "規則說明",
+)
+OBSERVER_CLIENT_META_FIELDS = {"_updatedAt", "_settledAt", "_syncAt", "_syncError"}
+OBSERVER_ALLOWED_KEYS = set(OBSERVER_COLUMNS) | OBSERVER_CLIENT_META_FIELDS | {
+    "schema_version", "target_tab",
+}
+OBSERVER_SETTLEMENT_STATES = {"PENDING_FINAL", "MISMATCH", "FINAL", "VOID"}
+OBSERVER_TERMINAL_STATES = {"FINAL", "VOID"}
+OBSERVER_FINAL_RESULTS = {"WIN", "HALF_WIN", "PUSH", "HALF_LOSS", "LOSE"}
+
 PREFERRED_COLUMNS = [
     "聯盟",
     "比賽日期",
@@ -147,6 +170,22 @@ def init_db() -> None:
         )
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_results_lookup ON results (league, season, game_date DESC, updated_at DESC)"
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS observer_observations (
+                observer_id TEXT PRIMARY KEY,
+                leg TEXT NOT NULL,
+                settlement_status TEXT NOT NULL,
+                raw_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_observer_observations_lookup "
+            "ON observer_observations (leg, settlement_status, updated_at DESC)"
         )
         conn.commit()
 
@@ -517,6 +556,155 @@ def maybe_mirror_to_sheet(payload: Dict[str, Any]) -> Dict[str, Any]:
             "worksheet": sheet_name,
             "error": str(exc),
         }
+
+
+# ---------------------------------------------------------------------------
+# C1/E1 observer ledger.  Keep this section independent from formal results:
+# no result-row canonicalizer, deletion policy, dynamic tab, or formal mirror
+# is used here.
+# ---------------------------------------------------------------------------
+def observer_text(value: Any) -> str:
+    return normalize_str(value)
+
+
+def observer_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate the small, fixed C1/E1 client contract and discard client meta."""
+    if not isinstance(payload, dict) or set(payload) - OBSERVER_ALLOWED_KEYS:
+        raise ValueError("invalid observation payload")
+    if isinstance(payload.get("schema_version"), bool) or payload.get("schema_version") != OBSERVER_SCHEMA_VERSION:
+        raise ValueError("invalid observation payload")
+    if any(key != "schema_version" and not isinstance(value, str) for key, value in payload.items()):
+        raise ValueError("invalid observation payload")
+    if observer_text(payload.get("target_tab")) != OBSERVER_TARGET_TAB:
+        raise ValueError("invalid observation payload")
+    if "目標分頁" in payload and observer_text(payload.get("目標分頁")) != OBSERVER_TARGET_TAB:
+        raise ValueError("invalid observation payload")
+    if observer_text(payload.get("聯盟")).upper() != "MLB":
+        raise ValueError("invalid observation payload")
+    if observer_text(payload.get("觀察腿")) not in {"C1", "E1"}:
+        raise ValueError("invalid observation payload")
+
+    data = {column: observer_text(payload.get(column)) for column in OBSERVER_COLUMNS}
+    data["聯盟"] = "MLB"
+    data["目標分頁"] = OBSERVER_TARGET_TAB
+    data["同步狀態"] = "SYNCED"
+
+    required = ("觀察ID", "比賽日期", "對戰", "客隊", "主隊", "比賽ID", "讓分盤",
+                "主客讓分盤", "即時盤口", "亞洲讓分盤", "觀察方向", "方向側", "凍結時間",
+                "開賽時間", "規則說明")
+    if any(not data[field] for field in required):
+        raise ValueError("invalid observation payload")
+
+    state = data["結算狀態"] or "PENDING_FINAL"
+    result = data["有無過盤"]
+    if state not in OBSERVER_SETTLEMENT_STATES:
+        raise ValueError("invalid observation payload")
+    if state == "FINAL":
+        if not data["最終比分"] or result not in OBSERVER_FINAL_RESULTS:
+            raise ValueError("invalid observation payload")
+    elif state == "VOID":
+        if result not in {"", "VOID"}:
+            raise ValueError("invalid observation payload")
+        data["有無過盤"] = "VOID"
+    elif state == "MISMATCH":
+        if result != "MISMATCH":
+            raise ValueError("invalid observation payload")
+    elif data["最終比分"] or result:
+        raise ValueError("invalid observation payload")
+    data["結算狀態"] = state
+    return data
+
+
+def observer_existing(observer_id: str) -> Optional[Dict[str, Any]]:
+    row = get_db().execute(
+        "SELECT raw_json FROM observer_observations WHERE observer_id = ?", (observer_id,)
+    ).fetchone()
+    if row is None:
+        return None
+    try:
+        data = json.loads(row["raw_json"])
+    except Exception:
+        raise RuntimeError("observation storage unavailable")
+    return data if isinstance(data, dict) else None
+
+
+def validate_observer_transition(existing: Optional[Dict[str, Any]], incoming: Dict[str, Any]) -> None:
+    if existing is None:
+        return
+    if any(observer_text(existing.get(field)) != incoming[field] for field in OBSERVER_IDENTITY_FIELDS):
+        raise ValueError("invalid observation payload")
+    current_state = observer_text(existing.get("結算狀態")) or "PENDING_FINAL"
+    if current_state in OBSERVER_TERMINAL_STATES:
+        for field in ("結算狀態", "最終比分", "有無過盤"):
+            if observer_text(existing.get(field)) != incoming[field]:
+                raise ValueError("invalid observation payload")
+
+
+def observer_worksheet(spreadsheet):
+    try:
+        ws = spreadsheet.worksheet(OBSERVER_TARGET_TAB)
+    except Exception:
+        ws = spreadsheet.add_worksheet(
+            title=OBSERVER_TARGET_TAB,
+            rows=2000,
+            cols=len(OBSERVER_COLUMNS),
+        )
+    end_col = col_to_a1(len(OBSERVER_COLUMNS))
+    ws.update(f"A1:{end_col}1", [OBSERVER_COLUMNS])
+    return ws
+
+
+def observer_sheet_index(ws) -> Dict[str, int]:
+    values = ws.get_all_values()
+    index: Dict[str, int] = {}
+    for row_number, row in enumerate(values[1:], start=2):
+        observer_id = observer_text(row[0] if row else "")
+        if observer_id:
+            index[observer_id] = row_number
+    return index
+
+
+def mirror_observation_to_sheet(data: Dict[str, Any]) -> Dict[str, Any]:
+    client = get_sheet_client()
+    if client is None:
+        raise RuntimeError("observation sheet unavailable")
+    spreadsheet = client.open_by_key(GOOGLE_SHEETS_SPREADSHEET_ID)
+    ws = observer_worksheet(spreadsheet)
+    row_values = [data[column] for column in OBSERVER_COLUMNS]
+    row_number = observer_sheet_index(ws).get(data["觀察ID"])
+    if row_number:
+        end_col = col_to_a1(len(OBSERVER_COLUMNS))
+        ws.update(f"A{row_number}:{end_col}{row_number}", [row_values])
+        return {"action": "update", "row": row_number}
+    ws.append_row(row_values, value_input_option="USER_ENTERED")
+    return {"action": "append"}
+
+
+def save_observation(payload: Dict[str, Any]) -> Dict[str, Any]:
+    data = observer_payload(payload)
+    existing = observer_existing(data["觀察ID"])
+    validate_observer_transition(existing, data)
+    mirror_observation_to_sheet(data)
+
+    now = utc_now_iso()
+    get_db().execute(
+        """
+        INSERT INTO observer_observations (
+            observer_id, leg, settlement_status, raw_json, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(observer_id) DO UPDATE SET
+            leg=excluded.leg,
+            settlement_status=excluded.settlement_status,
+            raw_json=excluded.raw_json,
+            updated_at=excluded.updated_at
+        """,
+        (
+            data["觀察ID"], data["觀察腿"], data["結算狀態"],
+            json.dumps(data, ensure_ascii=False, separators=(",", ":")), now, now,
+        ),
+    )
+    get_db().commit()
+    return {"ok": True, "observer_id": data["觀察ID"], "target_tab": OBSERVER_TARGET_TAB}
 def proxy_scoreboard(league: str, sport: str, dates: str):
     if not league or not sport or not dates:
         return jsonify({"ok": False, "error": "league, sport, dates are required"}), 400
@@ -547,6 +735,7 @@ def api_root():
         "endpoints": [
             "/health",
             "/save_result",
+            "/save_observation",
             "/results",
             "/stats",
             "/proxy/scoreboard",
@@ -580,6 +769,19 @@ def save_result():
         return jsonify({"ok": False, "error": str(exc)}), 400
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.post("/save_observation")
+def save_observation_route():
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"ok": False, "error": "invalid observation payload"}), 400
+    try:
+        return jsonify(save_observation(payload))
+    except ValueError:
+        return jsonify({"ok": False, "error": "invalid observation payload"}), 400
+    except Exception:
+        return jsonify({"ok": False, "error": "observation sync unavailable"}), 503
 
 
 @app.get("/results")
