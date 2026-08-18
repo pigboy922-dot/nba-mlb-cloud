@@ -600,7 +600,8 @@ def observer_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     data["目標分頁"] = OBSERVER_TARGET_TAB
     data["同步狀態"] = "SYNCED"
     data["盤口狀態"] = data["盤口狀態"] or "有效"
-    data["目前偵測盤口"] = data["目前偵測盤口"] or data["亞洲讓分盤"]
+    if data["盤口狀態"] == "有效" and not data["目前偵測盤口"]:
+        data["目前偵測盤口"] = data["亞洲讓分盤"]
 
     required = ("觀察ID", "比賽日期", "對戰", "客隊", "主隊", "比賽ID", "讓分盤",
                 "主客讓分盤", "即時盤口", "亞洲讓分盤", "觀察方向", "方向側", "凍結時間",
@@ -717,7 +718,13 @@ def observer_status_value(data: Optional[Dict[str, Any]], field: str) -> str:
     if field == "盤口狀態":
         return observer_market_status(data)
     if field == "目前偵測盤口":
-        return observer_text((data or {}).get(field)) or observer_text((data or {}).get("亞洲讓分盤"))
+        detected = observer_text((data or {}).get(field))
+        raw_status = observer_text((data or {}).get("盤口狀態"))
+        if detected:
+            return detected
+        if not raw_status or observer_market_status(data) == "有效":
+            return observer_text((data or {}).get("亞洲讓分盤"))
+        return ""
     return observer_text((data or {}).get(field))
 
 
