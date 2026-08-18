@@ -2,7 +2,7 @@ import json
 import os
 import sqlite3
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
@@ -43,12 +43,16 @@ OBSERVER_COLUMNS = [
     "觀察ID", "觀察腿", "聯盟", "比賽日期", "對戰", "客隊", "主隊", "最終比分",
     "讓分盤", "主客讓分盤", "即時盤口", "亞洲讓分盤", "有無過盤", "勝率統計",
     "觀察方向", "方向側", "比賽ID", "客隊ID", "主隊ID", "凍結時間", "開賽時間",
-    "結算狀態", "同步狀態", "目標分頁", "規則說明",
+    "結算狀態", "同步狀態", "目標分頁", "規則說明", "資料版本", "盤口更新時間",
 ]
 OBSERVER_IDENTITY_FIELDS = (
-    "觀察ID", "觀察腿", "聯盟", "比賽日期", "對戰", "客隊", "主隊", "比賽ID",
-    "客隊ID", "主隊ID", "讓分盤", "主客讓分盤", "即時盤口", "亞洲讓分盤",
-    "觀察方向", "方向側", "凍結時間", "開賽時間", "目標分頁", "規則說明",
+    "觀察腿", "聯盟", "比賽日期", "對戰", "客隊", "主隊", "比賽ID",
+    "客隊ID", "主隊ID", "凍結時間", "開賽時間", "目標分頁", "規則說明",
+)
+OBSERVER_SEMANTIC_FIELDS = ("聯盟", "比賽日期", "比賽ID", "觀察腿")
+OBSERVER_MARKET_FIELDS = (
+    "讓分盤", "主客讓分盤", "即時盤口", "亞洲讓分盤", "觀察方向", "方向側",
+    "盤口更新時間",
 )
 OBSERVER_CLIENT_META_FIELDS = {"_updatedAt", "_settledAt", "_syncAt", "_syncError"}
 OBSERVER_ALLOWED_KEYS = set(OBSERVER_COLUMNS) | OBSERVER_CLIENT_META_FIELDS | {
@@ -591,8 +595,14 @@ def observer_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     required = ("觀察ID", "比賽日期", "對戰", "客隊", "主隊", "比賽ID", "讓分盤",
                 "主客讓分盤", "即時盤口", "亞洲讓分盤", "觀察方向", "方向側", "凍結時間",
-                "開賽時間", "規則說明")
+                "開賽時間", "規則說明", "資料版本", "盤口更新時間")
     if any(not data[field] for field in required):
+        raise ValueError("invalid observation payload")
+    try:
+        version = int(data["資料版本"])
+    except (TypeError, ValueError):
+        raise ValueError("invalid observation payload")
+    if version < 1 or str(version) != data["資料版本"]:
         raise ValueError("invalid observation payload")
 
     state = data["結算狀態"] or "PENDING_FINAL"
@@ -628,16 +638,97 @@ def observer_existing(observer_id: str) -> Optional[Dict[str, Any]]:
     return data if isinstance(data, dict) else None
 
 
-def validate_observer_transition(existing: Optional[Dict[str, Any]], incoming: Dict[str, Any]) -> None:
+def observer_semantic_key(data: Dict[str, Any]) -> Tuple[str, ...]:
+    values = []
+    for field in OBSERVER_SEMANTIC_FIELDS:
+        value = observer_text(data.get(field))
+        if field == "比賽日期":
+            for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%m/%d/%Y"):
+                try:
+                    value = datetime.strptime(value, fmt).strftime("%Y-%m-%d")
+                    break
+                except ValueError:
+                    pass
+        values.append(value)
+    return tuple(values)
+
+
+def observer_find_existing(incoming: Dict[str, Any]) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+    matches: List[Tuple[str, Dict[str, Any]]] = []
+    incoming_key = observer_semantic_key(incoming)
+    for row in get_db().execute("SELECT observer_id, raw_json FROM observer_observations").fetchall():
+        try:
+            stored = json.loads(row["raw_json"])
+        except Exception:
+            raise RuntimeError("observation storage unavailable")
+        if not isinstance(stored, dict):
+            raise RuntimeError("observation storage unavailable")
+        stored_id = observer_text(row["observer_id"])
+        stored_key = observer_semantic_key(stored)
+        if stored_id == incoming["觀察ID"] and stored_key != incoming_key:
+            raise ValueError("invalid observation payload")
+        if stored_key == incoming_key:
+            matches.append((observer_text(row["observer_id"]), stored))
+    if len(matches) > 1:
+        raise ValueError("invalid observation payload")
+    return matches[0] if matches else (None, None)
+
+
+def observer_start_utc(value: str) -> datetime:
+    text = observer_text(value)
+    try:
+        if "T" in text:
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone(timedelta(hours=8)))
+        else:
+            parsed = datetime.strptime(text, "%Y-%m-%d %H:%M").replace(
+                tzinfo=timezone(timedelta(hours=8))
+            )
+    except (TypeError, ValueError):
+        raise ValueError("invalid observation payload")
+    return parsed.astimezone(timezone.utc)
+
+
+def observer_now_utc() -> datetime:
+    return datetime.fromisoformat(utc_now_iso().replace("Z", "+00:00")).astimezone(timezone.utc)
+
+
+def observer_equal(existing: Dict[str, Any], incoming: Dict[str, Any]) -> bool:
+    return all(observer_text(existing.get(field)) == incoming[field] for field in OBSERVER_COLUMNS)
+
+
+def observer_version(data: Optional[Dict[str, Any]]) -> int:
+    text = observer_text((data or {}).get("資料版本"))
+    return int(text) if text.isdigit() else 0
+
+
+def validate_observer_transition(existing: Optional[Dict[str, Any]], incoming: Dict[str, Any]) -> bool:
+    """Return True when a new version is applied; False for an exact retry."""
     if existing is None:
-        return
+        if incoming["結算狀態"] == "PENDING_FINAL" and observer_now_utc() >= observer_start_utc(incoming["開賽時間"]):
+            raise ValueError("invalid observation payload")
+        return True
     if any(observer_text(existing.get(field)) != incoming[field] for field in OBSERVER_IDENTITY_FIELDS):
+        raise ValueError("invalid observation payload")
+    old_version = observer_version(existing)
+    new_version = int(incoming["資料版本"])
+    if new_version < old_version:
+        raise ValueError("invalid observation payload")
+    if new_version == old_version:
+        if observer_equal(existing, incoming):
+            return False
         raise ValueError("invalid observation payload")
     current_state = observer_text(existing.get("結算狀態")) or "PENDING_FINAL"
     if current_state in OBSERVER_TERMINAL_STATES:
-        for field in ("結算狀態", "最終比分", "有無過盤"):
-            if observer_text(existing.get(field)) != incoming[field]:
-                raise ValueError("invalid observation payload")
+        raise ValueError("invalid observation payload")
+    market_changed = any(observer_text(existing.get(field)) != incoming[field] for field in OBSERVER_MARKET_FIELDS)
+    if market_changed:
+        if current_state != "PENDING_FINAL" or incoming["結算狀態"] != "PENDING_FINAL":
+            raise ValueError("invalid observation payload")
+        if observer_now_utc() >= observer_start_utc(incoming["開賽時間"]):
+            raise ValueError("invalid observation payload")
+    return True
 
 
 def observer_worksheet(spreadsheet):
@@ -649,44 +740,74 @@ def observer_worksheet(spreadsheet):
             rows=2000,
             cols=len(OBSERVER_COLUMNS),
         )
+    if getattr(ws, "col_count", len(OBSERVER_COLUMNS)) < len(OBSERVER_COLUMNS) and hasattr(ws, "resize"):
+        ws.resize(cols=len(OBSERVER_COLUMNS))
     end_col = col_to_a1(len(OBSERVER_COLUMNS))
     ws.update(f"A1:{end_col}1", [OBSERVER_COLUMNS])
     return ws
 
 
-def observer_sheet_index(ws) -> Dict[str, int]:
-    values = ws.get_all_values()
-    index: Dict[str, int] = {}
-    for row_number, row in enumerate(values[1:], start=2):
-        observer_id = observer_text(row[0] if row else "")
-        if observer_id:
-            index[observer_id] = row_number
-    return index
-
-
-def mirror_observation_to_sheet(data: Dict[str, Any]) -> Dict[str, Any]:
+def observer_sheet_context(data: Dict[str, Any]) -> Dict[str, Any]:
     client = get_sheet_client()
     if client is None:
         raise RuntimeError("observation sheet unavailable")
     spreadsheet = client.open_by_key(GOOGLE_SHEETS_SPREADSHEET_ID)
     ws = observer_worksheet(spreadsheet)
+    values = ws.get_all_values()
+    matches: List[Tuple[int, Dict[str, Any]]] = []
+    incoming_key = observer_semantic_key(data)
+    for row_number, row in enumerate(values[1:], start=2):
+        stored = {column: observer_text(row[index] if index < len(row) else "")
+                  for index, column in enumerate(OBSERVER_COLUMNS)}
+        stored_key = observer_semantic_key(stored)
+        if stored["觀察ID"] == data["觀察ID"] and stored_key != incoming_key:
+            raise ValueError("invalid observation payload")
+        if stored["觀察ID"] == data["觀察ID"] or stored_key == incoming_key:
+            matches.append((row_number, stored))
+    if len(matches) > 1:
+        raise ValueError("invalid observation payload")
+    row_number, stored = matches[0] if matches else (None, None)
+    return {"ws": ws, "row": row_number, "stored": stored}
+
+
+def mirror_observation_to_sheet(data: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+    ws = context["ws"]
     row_values = [data[column] for column in OBSERVER_COLUMNS]
-    row_number = observer_sheet_index(ws).get(data["觀察ID"])
+    row_number = context.get("row")
     if row_number:
         end_col = col_to_a1(len(OBSERVER_COLUMNS))
         ws.update(f"A{row_number}:{end_col}{row_number}", [row_values])
         return {"action": "update", "row": row_number}
-    ws.append_row(row_values, value_input_option="USER_ENTERED")
+    ws.append_row(row_values, value_input_option="RAW")
     return {"action": "append"}
 
 
-def save_observation(payload: Dict[str, Any]) -> Dict[str, Any]:
+def _save_observation_locked(payload: Dict[str, Any]) -> Dict[str, Any]:
     data = observer_payload(payload)
-    existing = observer_existing(data["觀察ID"])
-    validate_observer_transition(existing, data)
-    mirror_observation_to_sheet(data)
+    db_existing_id, db_existing = observer_find_existing(data)
+    sheet_context = observer_sheet_context(data)
+    sheet_existing = sheet_context.get("stored")
+    if db_existing and sheet_existing and observer_semantic_key(db_existing) != observer_semantic_key(sheet_existing):
+        raise ValueError("invalid observation payload")
+    if db_existing and sheet_existing:
+        db_version = observer_version(db_existing)
+        sheet_version = observer_version(sheet_existing)
+        if db_version > sheet_version:
+            raise ValueError("invalid observation payload")
+    existing = sheet_existing or db_existing
+    if existing and observer_text(existing.get("比賽日期")):
+        data["比賽日期"] = observer_text(existing.get("比賽日期"))
+    if existing and observer_text(existing.get("凍結時間")):
+        data["凍結時間"] = observer_text(existing.get("凍結時間"))
+    applied = validate_observer_transition(existing, data)
+    sheet_result = mirror_observation_to_sheet(data, sheet_context)
 
     now = utc_now_iso()
+    if db_existing_id and db_existing_id != data["觀察ID"]:
+        get_db().execute(
+            "UPDATE observer_observations SET observer_id = ? WHERE observer_id = ?",
+            (data["觀察ID"], db_existing_id),
+        )
     get_db().execute(
         """
         INSERT INTO observer_observations (
@@ -703,8 +824,29 @@ def save_observation(payload: Dict[str, Any]) -> Dict[str, Any]:
             json.dumps(data, ensure_ascii=False, separators=(",", ":")), now, now,
         ),
     )
-    get_db().commit()
-    return {"ok": True, "observer_id": data["觀察ID"], "target_tab": OBSERVER_TARGET_TAB}
+    return {
+        "ok": True,
+        "observer_id": data["觀察ID"],
+        "target_tab": OBSERVER_TARGET_TAB,
+        "action": sheet_result["action"],
+        "applied": applied,
+        "record_version": int(data["資料版本"]),
+        "stored_market": {field: data[field] for field in OBSERVER_MARKET_FIELDS},
+    }
+
+
+def save_observation(payload: Dict[str, Any]) -> Dict[str, Any]:
+    conn = get_db()
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        result = _save_observation_locked(payload)
+        conn.commit()
+        return result
+    except Exception:
+        conn.rollback()
+        raise
+
+
 def proxy_scoreboard(league: str, sport: str, dates: str):
     if not league or not sport or not dates:
         return jsonify({"ok": False, "error": "league, sport, dates are required"}), 400
