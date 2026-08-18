@@ -44,6 +44,7 @@ OBSERVER_COLUMNS = [
     "讓分盤", "主客讓分盤", "即時盤口", "亞洲讓分盤", "有無過盤", "勝率統計",
     "觀察方向", "方向側", "比賽ID", "客隊ID", "主隊ID", "凍結時間", "開賽時間",
     "結算狀態", "同步狀態", "目標分頁", "規則說明", "資料版本", "盤口更新時間",
+    "盤口狀態", "盤口狀態原因", "目前偵測盤口", "盤口狀態更新時間", "統計納入", "最後成功抓盤時間",
 ]
 OBSERVER_IDENTITY_FIELDS = (
     "觀察腿", "聯盟", "比賽日期", "對戰", "客隊", "主隊", "比賽ID",
@@ -54,6 +55,11 @@ OBSERVER_MARKET_FIELDS = (
     "讓分盤", "主客讓分盤", "即時盤口", "亞洲讓分盤", "觀察方向", "方向側",
     "盤口更新時間",
 )
+OBSERVER_STATUS_FIELDS = (
+    "盤口狀態", "盤口狀態原因", "目前偵測盤口", "盤口狀態更新時間",
+    "統計納入", "最後成功抓盤時間",
+)
+OBSERVER_LIVE_STATUS_FIELDS = tuple(field for field in OBSERVER_STATUS_FIELDS if field != "統計納入")
 OBSERVER_CLIENT_META_FIELDS = {"_updatedAt", "_settledAt", "_syncAt", "_syncError"}
 OBSERVER_ALLOWED_KEYS = set(OBSERVER_COLUMNS) | OBSERVER_CLIENT_META_FIELDS | {
     "schema_version", "target_tab",
@@ -61,6 +67,7 @@ OBSERVER_ALLOWED_KEYS = set(OBSERVER_COLUMNS) | OBSERVER_CLIENT_META_FIELDS | {
 OBSERVER_SETTLEMENT_STATES = {"PENDING_FINAL", "MISMATCH", "FINAL", "VOID"}
 OBSERVER_TERMINAL_STATES = {"FINAL", "VOID"}
 OBSERVER_FINAL_RESULTS = {"WIN", "HALF_WIN", "PUSH", "HALF_LOSS", "LOSE"}
+OBSERVER_MARKET_STATUSES = {"有效", "跳盤", "抓不到/待確認"}
 
 PREFERRED_COLUMNS = [
     "聯盟",
@@ -592,6 +599,8 @@ def observer_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     data["聯盟"] = "MLB"
     data["目標分頁"] = OBSERVER_TARGET_TAB
     data["同步狀態"] = "SYNCED"
+    data["盤口狀態"] = data["盤口狀態"] or "有效"
+    data["目前偵測盤口"] = data["目前偵測盤口"] or data["亞洲讓分盤"]
 
     required = ("觀察ID", "比賽日期", "對戰", "客隊", "主隊", "比賽ID", "讓分盤",
                 "主客讓分盤", "即時盤口", "亞洲讓分盤", "觀察方向", "方向側", "凍結時間",
@@ -604,6 +613,12 @@ def observer_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError("invalid observation payload")
     if version < 1 or str(version) != data["資料版本"]:
         raise ValueError("invalid observation payload")
+    if data["盤口狀態"] not in OBSERVER_MARKET_STATUSES:
+        raise ValueError("invalid observation payload")
+    if data["盤口狀態"] == "有效" and data["目前偵測盤口"] != data["亞洲讓分盤"]:
+        raise ValueError("invalid observation payload")
+    if data["盤口狀態"] != "有效" and (not data["盤口狀態原因"] or data["統計納入"] != "否"):
+        raise ValueError("invalid observation payload")
 
     state = data["結算狀態"] or "PENDING_FINAL"
     result = data["有無過盤"]
@@ -612,15 +627,19 @@ def observer_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     if state == "FINAL":
         if not data["最終比分"] or result not in OBSERVER_FINAL_RESULTS:
             raise ValueError("invalid observation payload")
+        data["統計納入"] = "是"
     elif state == "VOID":
         if result not in {"", "VOID"}:
             raise ValueError("invalid observation payload")
         data["有無過盤"] = "VOID"
+        data["統計納入"] = "否"
     elif state == "MISMATCH":
         if result != "MISMATCH":
             raise ValueError("invalid observation payload")
     elif data["最終比分"] or result:
         raise ValueError("invalid observation payload")
+    elif data["盤口狀態"] == "有效":
+        data["統計納入"] = "待結算"
     data["結算狀態"] = state
     return data
 
@@ -694,8 +713,20 @@ def observer_now_utc() -> datetime:
     return datetime.fromisoformat(utc_now_iso().replace("Z", "+00:00")).astimezone(timezone.utc)
 
 
+def observer_status_value(data: Optional[Dict[str, Any]], field: str) -> str:
+    if field == "盤口狀態":
+        return observer_market_status(data)
+    if field == "目前偵測盤口":
+        return observer_text((data or {}).get(field)) or observer_text((data or {}).get("亞洲讓分盤"))
+    return observer_text((data or {}).get(field))
+
+
 def observer_equal(existing: Dict[str, Any], incoming: Dict[str, Any]) -> bool:
-    return all(observer_text(existing.get(field)) == incoming[field] for field in OBSERVER_COLUMNS)
+    return all(
+        (observer_status_value(existing, field) if field in OBSERVER_STATUS_FIELDS else observer_text(existing.get(field)))
+        == incoming[field]
+        for field in OBSERVER_COLUMNS
+    )
 
 
 def observer_version(data: Optional[Dict[str, Any]]) -> int:
@@ -703,10 +734,14 @@ def observer_version(data: Optional[Dict[str, Any]]) -> int:
     return int(text) if text.isdigit() else 0
 
 
+def observer_market_status(data: Optional[Dict[str, Any]]) -> str:
+    return observer_text((data or {}).get("盤口狀態")) or "有效"
+
+
 def validate_observer_transition(existing: Optional[Dict[str, Any]], incoming: Dict[str, Any]) -> bool:
     """Return True when a new version is applied; False for an exact retry."""
     if existing is None:
-        if incoming["結算狀態"] == "PENDING_FINAL" and observer_now_utc() >= observer_start_utc(incoming["開賽時間"]):
+        if incoming["結算狀態"] != "PENDING_FINAL" or observer_market_status(incoming) != "有效" or observer_now_utc() >= observer_start_utc(incoming["開賽時間"]):
             raise ValueError("invalid observation payload")
         return True
     if any(observer_text(existing.get(field)) != incoming[field] for field in OBSERVER_IDENTITY_FIELDS):
@@ -723,8 +758,20 @@ def validate_observer_transition(existing: Optional[Dict[str, Any]], incoming: D
     if current_state in OBSERVER_TERMINAL_STATES:
         raise ValueError("invalid observation payload")
     market_changed = any(observer_text(existing.get(field)) != incoming[field] for field in OBSERVER_MARKET_FIELDS)
-    if market_changed:
+    live_status_changed = any(observer_status_value(existing, field) != incoming[field] for field in OBSERVER_LIVE_STATUS_FIELDS)
+    old_market_status = observer_market_status(existing)
+    new_market_status = observer_market_status(incoming)
+    if current_state == "PENDING_FINAL" and old_market_status != "有效" and incoming["結算狀態"] != "PENDING_FINAL":
+        raise ValueError("invalid observation payload")
+    if live_status_changed:
         if current_state != "PENDING_FINAL" or incoming["結算狀態"] != "PENDING_FINAL":
+            raise ValueError("invalid observation payload")
+        if observer_now_utc() >= observer_start_utc(incoming["開賽時間"]):
+            raise ValueError("invalid observation payload")
+        if new_market_status != "有效" and market_changed:
+            raise ValueError("invalid observation payload")
+    if market_changed:
+        if current_state != "PENDING_FINAL" or incoming["結算狀態"] != "PENDING_FINAL" or old_market_status not in OBSERVER_MARKET_STATUSES or new_market_status != "有效":
             raise ValueError("invalid observation payload")
         if observer_now_utc() >= observer_start_utc(incoming["開賽時間"]):
             raise ValueError("invalid observation payload")
@@ -831,7 +878,7 @@ def _save_observation_locked(payload: Dict[str, Any]) -> Dict[str, Any]:
         "action": sheet_result["action"],
         "applied": applied,
         "record_version": int(data["資料版本"]),
-        "stored_market": {field: data[field] for field in OBSERVER_MARKET_FIELDS},
+        "stored_market": {field: data[field] for field in OBSERVER_MARKET_FIELDS + OBSERVER_STATUS_FIELDS},
     }
 
 
