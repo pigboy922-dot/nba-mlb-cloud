@@ -389,7 +389,7 @@
       <label class="league-toggle"><input type="checkbox" id="mlbToggle" checked> MLB</label>
       <button class="btn-primary" id="todayBtn">更新今天</button>
       <button class="btn-secondary" id="tomorrowBtn">更新明天</button>
-      <div class="window-note hidden" id="windowNote">目前顯示：MLB＝W2′(大小分,偏離門檻 0.4,偏離≥0.8 注碼 1.6 倍)＋E1∪H7(讓分)；NBA＝A軌六腿(只用台盤)。NBA T1′ 已停用——它要美盤收盤線,而收盤就是停止下注,只用開盤線是 −26.2 單位/季。水位固定 0.95。缺盤口或資料不足一律標示 NEED 並不出手；雙重賽整組PASS。｜<b>賽前每次按更新都重新判定:跳盤後不再符合就自動取消,不再推薦、不進統計、雲端寫回 PASS;還符合的才保留並在賽後補最終比分。</b>戰績列含勝率／ROI／最長連敗;F12 主控台:LEGS2026_LEDGER.report()、.exportCsv()。戰績列同時顯示「訊號」(策略表現)與「實下」(你真實表現)。F12 主控台:LEGS2026_LEDGER.report() 完整報表、.exportCsv() 逐注 CSV。</div>
+      <div class="window-note hidden" id="windowNote">【v62 2026-09-06】目前顯示：MLB＝W2′(大小分,偏離門檻 0.4,偏離≥0.8 注碼 1.6 倍)＋E1∪H7(讓分)；NBA＝A軌六腿(只用台盤)。NBA T1′ 已停用——它要美盤收盤線,而收盤就是停止下注,只用開盤線是 −26.2 單位/季。水位固定 0.95。缺盤口或資料不足一律標示 NEED 並不出手；雙重賽整組PASS。｜<b>賽前每次按更新都重新判定:跳盤後不再符合就自動取消,不再推薦、不進統計、雲端寫回 PASS;還符合的才保留並在賽後補最終比分。</b>戰績列含勝率／ROI／最長連敗;F12 主控台:LEGS2026_LEDGER.report()、.exportCsv()。戰績列同時顯示「訊號」(策略表現)與「實下」(你真實表現)。F12 主控台:LEGS2026_LEDGER.report() 完整報表、.exportCsv() 逐注 CSV。</div>
       <div class="status muted" id="status">尚未更新</div>
       <div class="status muted" id="cloudStatus">雲端寫入：待命</div>
       <div class="status muted" id="playsportStatus">Playsport盤口：待命</div>
@@ -456,7 +456,7 @@ const CONFIG = {
   nba: { key:'nba', name:'NBA', sport:'basketball', league:'nba', lookbackDays:40, totalEdge:8, spreadEdge:3.5, highTotal:235 },
   mlb: { key:'mlb', name:'MLB', sport:'baseball', league:'mlb', lookbackDays:25, totalEdge:1.2, spreadEdge:0.8, highTotal:11.5 }
 };
-const APP_BUILD_ID = '2026-08-31 LEGS2026-v6.1 (稽核修 29 項；四分盤台盤與 X.5 回測座標對齊，L1-L6 選注等價)';
+const APP_BUILD_ID = '2026-09-06 LEGS2026-v62 (資料層修 ①~⑧ + 第五輪 R-1~R-17;判定規則與門檻同 v6.1 未動)';   /* v62:版本字串要出現在「策略版本」那行,不然看不出換了哪一份 */
 const MLB_TW_LOTTERY_RUNLINE_SOURCE_LABEL = '新邏輯：運彩盤 -1.5';
 const MLB_TW_LOTTERY_RUNLINE_SOURCE_RE = /新邏輯|甜盤|台彩|運彩|twlottery|lottery|runline|-1\.5/i;
 const ACTIVE_STRATEGY_SUMMARY = [
@@ -506,6 +506,27 @@ const DEFAULT_CLOUD_API_BASE = IS_LOCAL_STATIC_HOST
   ? 'https://nba-mlb-cloud.onrender.com'
   : ((location.protocol === 'http:' || location.protocol === 'https:') ? location.origin : 'https://nba-mlb-cloud.onrender.com');
 const CLOUD_API_BASE = window.CLOUD_API_BASE || DEFAULT_CLOUD_API_BASE;
+/* 2026-09-08:台盤中繼固定打 VM(LINE 機器人那台)。
+   實測(06:02)網頁版原本那九條抓玩運彩的路全滅:Render 兩個端點 404、Jina 只回 5,733 bytes、
+   兩個逾時、兩個連不上、一個 403;而同一時間 VM 伺服器端直連玩運彩是好的(解析出 13 場)。
+   伺服器端沒有 CORS,所以這條最穩,而且跟 LINE 吃的是同一份資料 —— 兩邊不會再各說各話。
+   window.LEGS_VM_BASE 可以覆蓋(換機器時用)。 */
+const PLAYSPORT_RELAY_BASE = window.LEGS_VM_BASE || 'https://152-70-101-221.sslip.io/legs';
+/* 2026-09-08 覆審 E-3:信任判斷用 origin + 路徑邊界,不要用 startsWith(PLAYSPORT_RELAY_BASE) ——
+   那個沒有邊界,`LEGS_VM_BASE='https://'` 之類的設定會讓每一個 https 候選都變成「可信」,
+   等於靜默關掉整個 W-2 檢查。設錯一個字就關掉安全檢查的形狀不該留著。 */
+const PLAYSPORT_RELAY_ORIGIN = (() => {
+  try { const u = new URL(PLAYSPORT_RELAY_BASE); return u.protocol === 'https:' ? u.origin : ''; }
+  catch (e) { return ''; }
+})();
+function playSportUrlIsTrustedForNoGames(url) {
+  const u = String(url || '');
+  if (PLAYSPORT_RELAY_ORIGIN && u.startsWith(PLAYSPORT_RELAY_ORIGIN + '/')) return true;
+  return /^https:\/\/www\.playsport\.cc\//.test(u);   /* 直連(瀏覽器裡會被 CORS 擋,留給無 CORS 的環境) */
+}
+function playSportUrlIsRelay(url) {
+  return !!PLAYSPORT_RELAY_ORIGIN && String(url || '').startsWith(PLAYSPORT_RELAY_ORIGIN + '/');
+}
 const ESPN_PROXY_BASE = window.ESPN_PROXY_BASE || CLOUD_API_BASE;
 const RECORD_STORAGE_KEY = 'nba_mlb_models_daily_results_v2';
 const PLAYSPORT_CONFIG = {
@@ -743,7 +764,7 @@ function buildCloudPayload(payload) {
      更糟的是 NBA 的還原路徑要靠 即時盤口/主客讓分盤 反推 storedFavoriteSide,兩格都是 '無'
      之後還原永久失敗 ⇒ 每輪再寫一次 '無',單向不可逆。
      同時把 v4.2 新加的 LEGS2026_* 與 MLB 盤口證據欄一起納入保護 —— 那些才是事後重現判定的依據。 */
-  const EMPTY_SENTINELS = new Set(['', '無', '-', '—', 'NaN', 'null', 'undefined', 'NEED']);
+  const EMPTY_SENTINELS = new Set(['', '無', '-', '—', 'NaN', 'null', 'undefined', 'NEED', '未抓到']);   /* 第五輪修 R-11 */
   const isEmptyish = v => !hasValue(v) || EMPTY_SENTINELS.has(String(v).trim());
   const PROTECTED_KEYS = [
     '亞洲讓分盤','讓分盤','主客讓分盤','即時盤口','大小分盤','最終比分',
@@ -757,6 +778,13 @@ function buildCloudPayload(payload) {
   if (String(cloudPayload['聯盟'] || '').toUpperCase() === 'MLB') {
     // MLB 只有按盤口按鈕後才送亞洲讓分盤；一般自動同步不送空值，避免覆蓋雲端盤口。
     if (!hasValue(cloudPayload['亞洲讓分盤'])) delete cloudPayload['亞洲讓分盤'];
+    /* 2026-09-08 覆審 A-1:N-1 讓這一欄在「這輪沒抓到」時會帶著舊值,而舊值本來就是從雲端灌回來的。
+       正常情況推回去是同一個值(冪等),但 preloadExistingRows 逾時那一輪本機可能比雲端舊 ——
+       那就會變成舊蓋新。舊值只給人看,不回寫。 */
+    if (String(cloudPayload['亞洲盤口來源'] || '').includes('舊值')) {
+      delete cloudPayload['亞洲讓分盤'];
+      delete cloudPayload['亞洲盤口來源'];
+    }
     ['規則1讓分推薦','規則2讓分推薦','規則3讓分推薦','規則4大小推薦','MLB新邏輯推薦'].forEach(k => { cloudPayload[k] = 'PASS'; });
     ['規則1讓分結果','規則2讓分結果','規則3讓分結果','規則4大小結果','MLB新邏輯結果'].forEach(k => { cloudPayload[k] = ''; });
     // MLB 不再因缺少亞洲盤口要求刪列，也不送刪除原因。
@@ -1245,6 +1273,13 @@ function getSeasonTypeValue(event) {
   }
   return '';
 }function isOfficialGame(conf, event) {
+  /* v62(第五輪修 R-6):「1 = 季前賽」只能綁在 event.season.type 上。getSeasonTypeValue 的第二候選是
+     competitions[0].type.id,ESPN 的標準賽就是 {id:"1", abbreviation:"STD"} —— season 缺席時整場會被當春訓丟掉。
+     雲端 fetch.is_preseason 也只看 season.slug / season.type,這裡對齊。 */
+  const st = event?.season?.type;
+  if (st !== undefined && st !== null && String(st) === '1') return false;
+  const slug = String(event?.season?.slug || '').toLowerCase();
+  if (/pre|spring|exhibition/.test(slug)) return false;
   const t = getSeasonTypeValue(event);
   if (!t) return false;
   if (t === '2' || t === '3' || t === '4') return true;
@@ -1945,7 +1980,7 @@ const MLB_STATSAPI_NAME_ZH = {
  'Chicago Cubs':'芝加哥小熊','Chicago White Sox':'芝加哥白襪','Cincinnati Reds':'辛辛那提紅人','Cleveland Guardians':'克里夫蘭守護者',
  'Colorado Rockies':'科羅拉多落磯','Detroit Tigers':'底特律老虎','Houston Astros':'休士頓太空人','Kansas City Royals':'堪薩斯市皇家',
  'Los Angeles Angels':'洛杉磯天使','Los Angeles Dodgers':'洛杉磯道奇','Miami Marlins':'邁阿密馬林魚','Milwaukee Brewers':'密爾瓦基釀酒人',
- 'Minnesota Twins':'明尼蘇達雙城','New York Mets':'紐約大都會','New York Yankees':'紐約洋基','Oakland Athletics':'奧克蘭運動家','Athletics':'奧克蘭運動家',
+ 'Minnesota Twins':'明尼蘇達雙城','New York Mets':'紐約大都會','New York Yankees':'紐約洋基','Oakland Athletics':'奧克蘭運動家','Athletics':'運動家',  /* v62 2026-09-05:StatsAPI 的 Athletics 要對到 ESPN 表的「運動家」,不然先發 ERA 查不到,運動家的 E1∪H7 永遠資料不足 */
  'Philadelphia Phillies':'費城費城人','Pittsburgh Pirates':'匹茲堡海盜','San Diego Padres':'聖地牙哥教士','San Francisco Giants':'舊金山巨人',
  'Seattle Mariners':'西雅圖水手','St. Louis Cardinals':'聖路易紅雀','Tampa Bay Rays':'坦帕灣光芒','Texas Rangers':'德州遊騎兵',
  'Toronto Blue Jays':'多倫多藍鳥','Washington Nationals':'華盛頓國民'
@@ -1979,14 +2014,17 @@ async function fetchMlbPitcherLast3Era(pid) {
 async function fetchMlbProbableStarters(targetTaipeiDateKey) {
   mlbProbSpByZh = {};
   try {
-    const base = new Date(`${targetTaipeiDateKey}T00:00:00+08:00`);
-    const days = [new Date(base.getTime() - 86400e3), base].map(x => x.toISOString().slice(0, 10));
+    /* v62 2026-09-05:原本 base.toISOString() 是 UTC,台北午夜 = UTC 前一天,實際抓成 [D-2, D-1],
+       台北日的午前尾巴場拿不到先發、還吃到 D-2 的殘值;而且鍵只有隊名,同隊兩天都有先發時互相覆蓋。
+       改成 [D-1, D](台北日 D 涵蓋的兩個美東日),鍵 = 隊名@美東日(跟雲端 mlb_sp 一樣)。 */
+    const dayStr = (off) => { const d = new Date(`${targetTaipeiDateKey}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + off); return d.toISOString().slice(0, 10); };
+    const days = [dayStr(-1), dayStr(0)];
     const games = [];
     for (const dd of days) {
       const r = await fetch(`${MLB_STATSAPI}/schedule?sportId=1&date=${dd}&hydrate=probablePitcher`);
       if (!r.ok) continue;
       const j = await r.json();
-      (j?.dates || []).forEach(dt => (dt?.games || []).forEach(g => games.push(g)));
+      (j?.dates || []).forEach(dt => (dt?.games || []).forEach(g => { g._fetchDay = dd; games.push(g); }));
     }
     const pids = new Set();
     for (const g of games) {
@@ -1994,7 +2032,16 @@ async function fetchMlbProbableStarters(targetTaipeiDateKey) {
         const t = g?.teams?.[side];
         const zh = MLB_STATSAPI_NAME_ZH[t?.team?.name];
         const pp = t?.probablePitcher;
-        if (zh && pp?.id) { mlbProbSpByZh[zh] = { id: pp.id, name: pp.fullName, era3: null, dayNight: (g?.dayNight || null) }; pids.add(pp.id); }
+        const usDate = String(g?.officialDate || g?._fetchDay || '');
+        if (zh && pp?.id) {
+          const rec = { id: pp.id, name: pp.fullName, era3: null, dayNight: (g?.dayNight || null), usDate };
+          const k = `${zh}@${usDate}`;
+          /* 第五輪修 R-7:同隊同美東日兩場(雙重賽)→ 留第一筆、標 dh;legs2026StarterFor 看到 dh 就不給(跟雲端 starter_for 一樣)。
+             台北日的雙重賽守衛擋不到「美東同日、分屬兩個台北日」的那種,這裡是第二道。 */
+          if (mlbProbSpByZh[k]) { mlbProbSpByZh[k].dh = true; }
+          else { mlbProbSpByZh[k] = rec; }
+          pids.add(pp.id);
+        }
       }
     }
     await Promise.all(Array.from(pids).map(async pid => {
@@ -2188,8 +2235,34 @@ function formatMarketSpread(market, leftName, rightName) {
   const favName = market.favoriteSide === 'left' ? leftName : rightName;
   return `${favName} -${round1(market.spread)}`;
 }
+function legs2026ScoreboardUsTotals(event) {
+  /* v62 2026-09-05:ESPN 的 odds 網頁沒有日期參數,按「明天」或傍晚按「今天」時那批比賽不在頁上,
+     W2′ 整片資料不足;而 scoreboard JSON 本身就帶 competitions[0].odds[]。
+     規則跟雲端 fetch.us_totals 一樣:一家就是一組(線、兩邊賠率、開盤線都從同一家拿),不跨家拼;
+     挑第一家「線 + 兩邊賠率」都齊的;沒有就拿第一家有線的(賠率缺 → 下游 NEED)。 */
+  const lineNum = (v) => { if (v === null || v === undefined) return null; const m = String(v).match(/-?\d+(?:\.\d+)?/); return m ? Number(m[0]) : null; };
+  const oddsNum = (v) => { if (v === null || v === undefined || v === '') return null; const n = americanOddsNumber(String(v).replace('+', '').trim()); return Number.isFinite(n) ? n : null; };
+  const books = [];
+  for (const o of (event?.competitions?.[0]?.odds || [])) {
+    const over = o?.total?.over || {}, under = o?.total?.under || {};
+    let cur = lineNum(over?.close?.line); if (cur === null) cur = lineNum(under?.close?.line); if (cur === null) cur = lineNum(o?.overUnder);
+    if (cur === null || cur <= 0) continue;
+    const oo = oddsNum(over?.close?.odds) ?? oddsNum(over?.odds) ?? oddsNum(o?.overOdds);
+    const uo = oddsNum(under?.close?.odds) ?? oddsNum(under?.odds) ?? oddsNum(o?.underOdds);
+    let op = lineNum(over?.open?.line); if (op === null) op = lineNum(under?.open?.line); if (op !== null && op <= 0) op = null;
+    books.push({ total: cur, openTotal: op, overOdds: oo, underOdds: uo });
+  }
+  return books.find(b => b.overOdds !== null && b.underOdds !== null) || books[0] || null;
+}
 function getMlbUsSnapshot(event, leftCompetitor, rightCompetitor) {
   const espnSnapshot = getEspnOpeningOddsForEvent(event, leftCompetitor, rightCompetitor, 'mlb');
+  const complete = espnSnapshot && isFiniteNum(espnSnapshot.total) && espnSnapshot.overOdds !== null && espnSnapshot.overOdds !== undefined
+                   && espnSnapshot.underOdds !== null && espnSnapshot.underOdds !== undefined;
+  if (!complete) {
+    const sb = legs2026ScoreboardUsTotals(event);
+    /* 第五輪 R-16:來源字串跟網頁那條分開,帳本事後看得出這注的美盤是 scoreboard 來的;/espn-mlb-open/ 閘門是子字串測試,照樣過 */
+    if (sb) return { source: 'espn-mlb-open-scoreboard', usTotal: sb.total, usOpenTotal: sb.openTotal, usOverOdds: sb.overOdds, usUnderOdds: sb.underOdds };
+  }
   return {
     source: espnSnapshot?.source || '',
     usTotal: isFiniteNum(espnSnapshot?.total) ? Number(espnSnapshot.total) : null,
@@ -2360,21 +2433,31 @@ const PLAYSPORT_MLB_SHORT_TEAM_NAMES = Array.from(new Set(Object.values(PLAYSPOR
   .sort((a,b)=>b.length-a.length);
 
 function normalizePlaySportTeamText(value) {
-  return String(value || '')
-    .replace(/[\s　\[\]【】()（）#*]/g, '')
-    .replace(/洛杉磯|亞利桑那|亞特蘭大|巴爾的摩|波士頓|芝加哥|辛辛那提|克里夫蘭|科羅拉多|底特律|休士頓|堪薩斯市|邁阿密|密爾瓦基|明尼蘇達|紐約|費城|匹茲堡|聖地牙哥|舊金山|西雅圖|聖路易|坦帕灣|德州|多倫多|華盛頓/g, '');
+  /* v62 2026-09-05:原本用全域 replace 去城市,「費城費城人」會變成「人」,再配上雙向 includes,
+     太空人/紅人/釀酒人/巨人/費城人 互相誤配(實測 25 組)。改成只脫「開頭一個」城市,
+     脫完少於兩字就還原(跟雲端 playsport.norm_team 一樣)。 */
+  const s = String(value || '').replace(/[\s　\[\]【】()（）#*]/g, '');
+  const stripped = s.replace(/^(?:洛杉磯|亞利桑那|亞特蘭大|巴爾的摩|波士頓|芝加哥|辛辛那提|克里夫蘭|科羅拉多|底特律|休士頓|堪薩斯市|邁阿密|密爾瓦基|明尼蘇達|紐約|費城|匹茲堡|聖地牙哥|舊金山|西雅圖|聖路易|坦帕灣|德州|多倫多|華盛頓|金州|布魯克林|夏洛特|達拉斯|丹佛|印第安納|曼菲斯|紐奧良|奧克拉荷馬|奧蘭多|鳳凰城|波特蘭|沙加緬度|聖安東尼奧|猶他)/, '');   /* 第五輪 R-13:NBA 城市補齊,跟雲端 _CITY 同一份 */
+  return stripped.length >= 2 ? stripped : s;
+}
+function playSportAliasHit(a, b) {
+  /* 兩邊都至少兩個字才准用包含;短的只准完全相同 */
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (a.length < 2 || b.length < 2) return false;
+  return a.includes(b) || b.includes(a);
 }
 function getPlaySportTeamAliases(teamName) {
   const clean = normalizePlaySportTeamText(teamName);
   const aliases = new Set([clean, String(teamName || '').trim()]);
   Object.entries({ ...PLAYSPORT_MLB_TEAM_SHORT_ALIASES, ...PLAYSPORT_NBA_TEAM_SHORT_ALIASES }).forEach(([full, shorts]) => {
     const fullClean = normalizePlaySportTeamText(full);
-    if (String(teamName || '') === full || clean === fullClean || fullClean.includes(clean) || clean.includes(fullClean)) {
+    if (String(teamName || '') === full || playSportAliasHit(clean, fullClean)) {
       shorts.forEach(s => aliases.add(normalizePlaySportTeamText(s)));
     }
     shorts.forEach(s => {
       const shortClean = normalizePlaySportTeamText(s);
-      if (clean === shortClean || clean.includes(shortClean) || shortClean.includes(clean)) aliases.add(shortClean);
+      if (playSportAliasHit(clean, shortClean)) aliases.add(shortClean);
     });
   });
   return Array.from(aliases).filter(Boolean);
@@ -2382,7 +2465,7 @@ function getPlaySportTeamAliases(teamName) {
 function playSportTeamMatches(appName, siteName) {
   const siteClean = normalizePlaySportTeamText(siteName);
   if (!siteClean) return false;
-  return getPlaySportTeamAliases(appName).some(alias => alias && (alias === siteClean || alias.includes(siteClean) || siteClean.includes(alias)));
+  return getPlaySportTeamAliases(appName).some(alias => playSportAliasHit(alias, siteClean));
 }
 function extractPlaySportTeamShort(line) {
   const clean = normalizePlaySportTeamText(line);
@@ -2399,14 +2482,14 @@ function parsePlaySportAsianLineText(line) {
     .replace(/\s+/g, '')
     .replace(/\*\*/g, '')
     .replace(/％/g, '%');
-  const m = compact.match(/(客|主)(\d+)分(贏|輸)(\d{1,2})%?/);
+  const m = compact.match(/(客|主)(\d+(?:\.\d+)?)分(贏|輸)(\d{1,2})%?/);   /* v62:吃小數盤(主1.5分輸50%) */
   if (m) {
     const points = Number(m[2]);
     const water = Number(m[4]);
     if (!Number.isFinite(points) || !Number.isFinite(water)) return '';
     return `${m[1]}${points}${m[3] === '贏' ? '+' : '-'}${water}%`;
   }
-  const direct = compact.match(/(客|主)(\d+)([+-])(\d{1,2})%?/);
+  const direct = compact.match(/(客|主)(\d+(?:\.\d+)?)([+-])(\d{1,2})%?/);
   if (!direct) return '';
   const points = Number(direct[2]);
   const water = Number(direct[4]);
@@ -2433,10 +2516,18 @@ function parsePlaySportTotalLineText(text) {
   return null;
 }
 function parsePlaySportGameDateText(text) {
-  const m = String(text || '').match(/gameid=(\d{8})\d*/i);
+  const m = String(text || '').match(/gameid=["']?(\d{8})\d*/i);   /* 第五輪 R-2:原始 HTML 的 <tr gameid="…"> 也吃 */
   if (!m) return '';
   const s = m[1];
   return `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}`;
+}
+function parsePlaySportPageDate(html) {
+  /* 第五輪修 R-2(G 情境):純 HTML 路徑經過 htmlToPlainText 之後 gameid 就沒了,列帶不出日期,
+     於是本日頁傍晚翻頁成隔天的盤時認不出來。先在原始 HTML 上把所有 <tr gameid> 的日期收齊:
+     整頁只有一個日期才回它;有兩個以上(混日)就回空,寧可讓下游當「沒日期」處理。 */
+  const days = new Set();
+  for (const m of String(html || '').matchAll(/gameid=["']?(\d{8})\d*/gi)) days.add(`${m[1].slice(0,4)}-${m[1].slice(4,6)}-${m[1].slice(6,8)}`);
+  return days.size === 1 ? Array.from(days)[0] : '';
 }
 function extractPlaySportMarkdownTeam(rowText) {
   const m = String(rowText || '').match(/###\s*\[([^\]]+)\]\([^)]*gamesData\/teams[^)]*\)/);
@@ -2450,7 +2541,14 @@ function parsePlaySportAsianMarketsFromMarkdownTable(text) {
   const rows = [];
   for (let i = 0; i < lines.length; i += 1) {
     const awayRow = lines[i];
-    if (!awayRow.includes('gamesData/battle') || parsePlaySportTimeMinutes(awayRow) === null) continue;
+    /* 2026-09-08:原本規定「沒有開賽時間就跳過整列」。實測 Jina 現在把玩運彩的**時間欄弄丟了**
+       (它回 200、盤口都在、8 行 gamesData,但 0 行有時間)→ 我們一列都收不到,整條路等於死的。
+       時間本來是拿來當「這是不是一場比賽」的憑證;`gameid=YYYYMMDD…` 一樣是憑證,而且還帶日期。
+       所以放寬成:**有時間、或有 gameid,兩者其一就算數**。沒有時間的列 timeMinutes 會是 null,
+       findPlaySportAsianMarket 對「同兩隊多列又分不出時間」本來就 fail closed(回 null → NEED),
+       所以放寬不會讓雙重賽亂配。 */
+    if (!awayRow.includes('gamesData/battle')) continue;
+    if (parsePlaySportTimeMinutes(awayRow) === null && !parsePlaySportGameDateText(awayRow)) continue;
     let homeRow = '';
     for (let j = i + 1; j < Math.min(lines.length, i + 5); j += 1) {
       if (!lines[j].includes('gamesData/battle') && extractPlaySportMarkdownTeam(lines[j])) {
@@ -2464,7 +2562,7 @@ function parsePlaySportAsianMarketsFromMarkdownTable(text) {
     const asianLine = parsePlaySportAsianLineText(combinedRows);
     const totalLine = parsePlaySportTotalLineText(combinedRows);
     const gameDate = parsePlaySportGameDateText(combinedRows);
-    if (!awayTeam || !homeTeam || !asianLine) continue;
+    if (!awayTeam || !homeTeam) continue;   /* v62:讓分格空(小數盤/未開)也保留,台盤大小分還在,W2′ 用得到 */
     const timeMatch = awayRow.match(/\b(AM|PM)\s*\d{1,2}:\d{2}/i);
     rows.push({
       awayTeam,
@@ -2488,14 +2586,17 @@ function parsePlaySportAsianMarketsFromMarkdownTable(text) {
       const teamMatches = Array.from(row.matchAll(/\[([^\]]+)\]\([^)]*gamesData\/teams[^)]*\)/g))
         .map(match => String(match[1] || '').trim()).filter(Boolean);
       if (teamMatches.length < 2) continue;
-      const combinedRows = `${row} ${lines[i + 1] || ''}`;
+      /* v62(第五輪修 R-1):lines 已經濾成「只有含 gamesData/ 的列」,lines[i+1] 是**下一場**,
+         而 parsePlaySportTotalLineText 取最後一個匹配 → 這場沒盤時會拿到下一場的大小分。只看自己這一列。 */
+      const combinedRows = row;
       const asianLine = parsePlaySportAsianLineText(combinedRows);
-      if (!asianLine) continue;
+      const totalLine2 = parsePlaySportTotalLineText(combinedRows);
+      if (!asianLine && totalLine2 === null) continue;   /* v62:讓分格空也保留(只要大小分還在) */
       rows.push({
         awayTeam:teamMatches[0],
         homeTeam:teamMatches[1],
         asianLine,
-        totalLine:parsePlaySportTotalLineText(combinedRows),
+        totalLine:totalLine2,
         gameDate:'',
         rawAsianLine:asianLine,
         timeText:'',
@@ -2537,20 +2638,44 @@ function htmlToPlainText(html) {
   } catch (err) {}
   return String(html || '').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '\n');
 }
+function playSportPageHasNoGames(html) {
+  /* 照雲端 fetch.PLAYSPORT_EMPTY 的規則:頁面正常但這一天沒有賽事(例如 NBA 季外會寫「暫無資料」),
+     跟「抓不到 / 解析壞掉」是兩回事。前者回空是正確答案。
+     2026-09-08 實測:NBA 季外那頁 HTTP 200、37KB、內容有「暫無資料」、沒有任何 gameid。 */
+  const s = String(html || '');
+  /* 2026-09-08 覆審 W-2:先要正面證據 —— 這確實是玩運彩的比賽頁。
+     不然「被截斷的原始 HTML(頁首本來就有 <tr>、還沒到第一個 gameid)」、代理回 200 的錯誤頁、
+     維護頁,全部都會命中「>5000 + 有 <tr> + 沒 gameid」而被誤判成無賽事 ——
+     而在網頁版誤判的代價比雲端大得多:會短路整輪候選、寫快取、還跳過背景重試。 */
+  if (!/allianceid|predict\/games|gamesData/.test(s)) return false;
+  if (/暫無資料|尚無賽事|無賽事資料/.test(s)) return true;
+  return s.length > 5000 && s.includes('<tr') && !s.includes('gameid');
+}
 function parsePlaySportAsianMarketsFromHtml(html) {
   let source = html;
   try {
     const maybeJson = JSON.parse(String(html || ''));
+    /* 2026-09-08:VM 中繼回 {"ok":true,"rows":[],"note":"無賽事"} 是**正確答案**(季外),不是抓取失敗。
+       這個判斷一定要在下面 `return maybeJson.rows` 之前 —— 空陣列也是 Array,會被那行先接走。 */
+    /* 2026-09-08 覆審 D-3:改判明確布林 noGames,不要拿會被反射又被快取的自由文字 note 做控制流。
+       (相容:舊版中繼沒有 noGames 時才退回看 source/note。) */
+    if (maybeJson && maybeJson.ok === true && Array.isArray(maybeJson.rows) && !maybeJson.rows.length
+        && (maybeJson.noGames === true
+            || (maybeJson.noGames === undefined
+                && (String(maybeJson.source || '') === '無賽事'
+                    || String(maybeJson.note || '') === '無賽事')))) {
+      const empty = []; empty.__playsportNoGames = true; return empty;
+    }
     if (Array.isArray(maybeJson?.rows)) return maybeJson.rows;
     if (Array.isArray(maybeJson?.markets)) return maybeJson.markets;
     if (typeof maybeJson?.html === 'string') source = maybeJson.html;
     else if (typeof maybeJson?.contents === 'string') source = maybeJson.contents;
     else if (typeof maybeJson?.text === 'string') source = maybeJson.text;
   } catch (err) {}
-
   const markdownRows = parsePlaySportAsianMarketsFromMarkdownTable(source);
   if (markdownRows.length) return markdownRows;
 
+  const pageDate = parsePlaySportPageDate(source);   /* 第五輪 R-2:頁面級日期戳,給下面純 HTML 路徑的列用 */
   const lines = htmlToPlainText(source)
     .split(/\r?\n+/)
     .map(s => s.trim())
@@ -2561,6 +2686,7 @@ function parsePlaySportAsianMarketsFromHtml(html) {
   });
 
   const rows = [];
+  rows.__playsportNoGames = !timeIndexes.length && playSportPageHasNoGames(source);
   timeIndexes.forEach((idx, order) => {
     const nextIdx = timeIndexes[order + 1] || lines.length;
     const segment = lines.slice(idx, nextIdx);
@@ -2573,12 +2699,14 @@ function parsePlaySportAsianMarketsFromHtml(html) {
     if (teams.length < 2) return;
     const asianRaw = segment.find(line => parsePlaySportAsianLineText(line));
     const asianLine = parsePlaySportAsianLineText(asianRaw);
-    if (!asianLine) return;
+    const totalLineHtml = parsePlaySportTotalLineText(segment.join(' '));
+    if (!asianLine && totalLineHtml === null) return;   /* v62(第五輪修 R-5):這條路徑也要跟 markdown 一樣放寬 */
     rows.push({
       awayTeam: teams[0],
       homeTeam: teams[1],
       asianLine,
-      totalLine: parsePlaySportTotalLineText(segment.join(' ')),
+      totalLine: totalLineHtml,
+      gameDate: pageDate,
       rawAsianLine: asianRaw,
       timeText: segment[0],
       timeMinutes: parsePlaySportTimeMinutes(segment[0]),
@@ -2592,10 +2720,17 @@ function getPlaySportGameday(offsetDays) {
   if (offsetDays === 1) return 'tomorrow';
   return 'today';
 }
-function buildPlaySportUrl(confKey, offsetDays, variant='official') {
+function getPlaySportGamedays(offsetDays) {
+  /* v62 2026-09-05:玩運彩的 today 頁傍晚(實測 19:50)就翻成隔天的盤,一個 offset 只打一頁會整片「未匯入」。
+     照雲端 fetch.playsport_gamedays:依序試幾頁,日期不符的那頁會被下游 gameDate 過濾丟掉。 */
+  if (offsetDays === -1) return ['yesterday', 'today'];
+  if (offsetDays === 1) return ['tomorrow', 'today'];
+  return ['today', 'yesterday'];   /* 第五輪修 R-3:傍晚翻頁後今天的盤在 yesterday 頁;tomorrow 頁不可能有今天的,拿掉省時間 */
+}
+function buildPlaySportUrl(confKey, offsetDays, variant='official', gamedayOverride='') {
   const cfg = PLAYSPORT_CONFIG[confKey];
   if (!cfg?.allianceid) return '';
-  const gameday = getPlaySportGameday(offsetDays);
+  const gameday = gamedayOverride || getPlaySportGameday(offsetDays);
   const base = `https://www.playsport.cc/predict/games?allianceid=${encodeURIComponent(cfg.allianceid)}`;
 
   // Playsport 的日期切換實際使用 gameday=tomorrow / today / yesterday。
@@ -2618,39 +2753,59 @@ function uniqueList(values) {
 function addCacheBust(url, bust) {
   return `${url}${url.includes('?') ? '&' : '?'}_=${encodeURIComponent(bust)}`;
 }
-function getPlaySportFetchCandidates(confKey, offsetDays) {
+function getPlaySportFetchCandidates(confKey, offsetDays, gamedayOverride='') {
+  /* v62(第五輪修 R-2/R-3):一次只建**一個** gameday 的候選。原本把幾個 gameday 攤平後每 4 個一批平行搶答,
+     today 與 tomorrow 會落在同一批、先回來的贏 → 按「明天」可能拿到今天那頁。改成外層逐個 gameday 跑完再換。
+     非本日頁(備援頁)只用 official 一種網址,不然候選數 ×3、全失敗時等待時間也 ×3。 */
   const cfg = PLAYSPORT_CONFIG[confKey];
   if (!cfg?.allianceid) return [];
-  const gameday = getPlaySportGameday(offsetDays);
+  const natural = getPlaySportGameday(offsetDays);
+  const gameday = gamedayOverride || natural;
+  const isNatural = gameday === natural;
   const targetDate = getTaipeiDateKeyWithOffset(offsetDays);
   const bust = Date.now();
-  const cleanUrls = uniqueList([
-    buildPlaySportUrl(confKey, offsetDays, 'official'),
-    buildPlaySportUrl(confKey, offsetDays, 'typeOnly'),
-    buildPlaySportUrl(confKey, offsetDays, 'legacy')
-  ]);
-  const directUrls = cleanUrls.map(url => addCacheBust(url, bust));
-  const firstUrl = directUrls[0];
+  /* 2026-09-08:三種網址寫法(official / type=p / from=header)指的是**同一頁**,內容一樣。
+     以前每一家代理都被拿這三個各打一次 → 對每一家做了 3 倍的無意義重複
+     (一輪 25 個候選,其中 7 家 × 3)。收斂成一個代表網址:每一家只打一次。
+     其他兩種寫法留作最後的直連備援(直連沒有第三方,多試一種不會傷到別人)。 */
+  const variants = uniqueList(isNatural ? [
+    buildPlaySportUrl(confKey, offsetDays, 'official', gameday),
+    buildPlaySportUrl(confKey, offsetDays, 'typeOnly', gameday),
+    buildPlaySportUrl(confKey, offsetDays, 'legacy', gameday)
+  ] : [buildPlaySportUrl(confKey, offsetDays, 'official', gameday)]);
+  const cleanUrls = [variants[0]];
+  const directUrls = variants.map(url => addCacheBust(url, bust));
+  const firstUrl = addCacheBust(cleanUrls[0], bust);
 
   // 目前雲端服務主要是 ESPN / 統計資料，Playsport 需透過可跨網域讀取的 Reader / CORS 代理。
   // Jina Reader 會把頁面轉成 Markdown，parsePlaySportTimeMinutes 已支援「#### AM 07:10」。
-  const jinaUrls = directUrls.map(url => `https://r.jina.ai/${url}`);
-  const corsProxyUrls = directUrls.flatMap(url => [
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-    `https://r.jina.ai/${url}`,
-    `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(url)}`,
-    `https://cors.isomorphic-git.org/${url}`,
-    `https://thingproxy.freeboard.io/fetch/${url}`,
-    `https://corsproxy.io/?${encodeURIComponent(url)}`
-  ]);
+  /* 2026-09-08 覆審 F-2:jina 排到**最後**。它回的是 Markdown,而且實測會把「時間欄」整欄吃掉
+     (回 200、有盤口、就是沒有開賽時間)—— 同名同隊的雙重賽因此無法用時間區分,
+     findPlaySportAsianMarket 會 fail-closed 回 null,結果是「抓到了卻還是未匯入」。
+     它排第一的時候,後面五家 HTML 代理(有時間欄)根本沒機會被試到。 */
+  const proxyUrls = [
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(firstUrl)}`,
+    `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(firstUrl)}`,
+    `https://cors.isomorphic-git.org/${firstUrl}`,
+    `https://thingproxy.freeboard.io/fetch/${firstUrl}`,
+    `https://corsproxy.io/?${encodeURIComponent(firstUrl)}`,
+    `https://r.jina.ai/${firstUrl}`
+  ];
 
+  /* 第一順位:VM 中繼(伺服器端直連玩運彩,回已經解析好的 rows)。
+     CLOUD_API_BASE 的那幾條留著當備援 —— Render 目前沒有這些路由,一直是 404,
+     但換主機或改架構時它們會自己活過來,留著不花成本。 */
+  const relayQs = `league=${encodeURIComponent(confKey)}&offset=${encodeURIComponent(offsetDays)}&gameday=${encodeURIComponent(gameday)}&date=${encodeURIComponent(targetDate)}&_=${encodeURIComponent(bust)}`;
+  /* 2026-09-08:Render 那邊本來列了三條(/playsport/asian、/proxy/playsport、/proxy/url),
+     實測三條都是 404 —— 後兩條是從來沒存在過的舊路徑,留著只是每輪多打兩次。只留第一條當備援。 */
+  const cloudUrls = isNatural ? [
+    `${PLAYSPORT_RELAY_BASE}/playsport/asian?${relayQs}`,
+    `${CLOUD_API_BASE}/playsport/asian?league=${encodeURIComponent(confKey)}&allianceid=${encodeURIComponent(cfg.allianceid)}&gameday=${encodeURIComponent(gameday)}&date=${encodeURIComponent(targetDate)}&url=${encodeURIComponent(firstUrl)}&_=${encodeURIComponent(bust)}`
+  ] : [];
   return uniqueList([
-    `${CLOUD_API_BASE}/playsport/asian?league=${encodeURIComponent(confKey)}&allianceid=${encodeURIComponent(cfg.allianceid)}&gameday=${encodeURIComponent(gameday)}&date=${encodeURIComponent(targetDate)}&url=${encodeURIComponent(firstUrl)}&_=${encodeURIComponent(bust)}`,
-    `${CLOUD_API_BASE}/proxy/playsport?league=${encodeURIComponent(confKey)}&allianceid=${encodeURIComponent(cfg.allianceid)}&gameday=${encodeURIComponent(gameday)}&date=${encodeURIComponent(targetDate)}&url=${encodeURIComponent(firstUrl)}&_=${encodeURIComponent(bust)}`,
-    `${CLOUD_API_BASE}/proxy/url?url=${encodeURIComponent(firstUrl)}`,
-    ...jinaUrls,
-    ...corsProxyUrls,
-    ...directUrls
+    ...cloudUrls,
+    ...proxyUrls,
+    ...directUrls.slice(0, 1)   /* 直連在瀏覽器一定被 CORS 擋,三種寫法都試只是多打玩運彩兩次 */
   ]);
 }
 async function fetchTextWithTimeout(url, options={}, timeoutMs=12000) {
@@ -2694,7 +2849,10 @@ function normalizePlaySportAsianRows(rawRows) {
     const homeTeam = row?.homeTeam || row?.home || row?.主隊 || row?.主 || row?.home_name || '';
     const rawLine = row?.asianLine || row?.line || row?.asian || row?.亞洲盤口 || row?.亞洲讓分盤 || row?.rawAsianLine || row?.handicap || '';
     const asianLine = normalizePlaySportAsianLine(rawLine);
-    if (!awayTeam || !homeTeam || !asianLine) return;
+    const totalCand = row?.totalLine ?? row?.total ?? row?.大小分盤 ?? parsePlaySportTotalLineText(row?.rawTotalLine || row?.totalText || '');
+    /* v62(第五輪修 R-8):讓分、大小都沒有的列不留 —— 留了會讓同兩隊出現第二列,唯一匹配失敗反而整場 NEED */
+    const hasTotal = totalCand !== null && totalCand !== undefined && totalCand !== '' && Number.isFinite(Number(totalCand)) && Number(totalCand) > 0;   /* 0 = 盤被拉掉,不算有 */
+    if (!awayTeam || !homeTeam || (!asianLine && !hasTotal)) return;
     rows.push({
       awayTeam: String(awayTeam).trim(),
       homeTeam: String(homeTeam).trim(),
@@ -2718,6 +2876,10 @@ function getPlaySportCandidateTimeout(url, attemptIndex) {
 async function fetchPlaySportAsianMarkets(confKey, offsetDays) {
   const cacheKey = `${confKey}:${offsetDays}:${getTaipeiDateKeyWithOffset(offsetDays)}`;
   const cachedRows = playsportMarketCache.get(cacheKey);
+  if (Array.isArray(cachedRows) && cachedRows.__playsportNoGames) {
+    playsportMarketFetchStatus.set(cacheKey, { complete:true, source:'no_games', rows:0, at:taiwanTime() });
+    return cachedRows;
+  }
   if (Array.isArray(cachedRows) && cachedRows.length) {
     playsportMarketFetchStatus.set(cacheKey, { complete:true, source:'cache', rows:cachedRows.length, at:taiwanTime() });
     return cachedRows;
@@ -2730,16 +2892,53 @@ async function fetchPlaySportAsianMarkets(confKey, offsetDays) {
   playsportMarketFetchStatus.set(cacheKey, { complete:false, reason:'in_progress', at:taiwanTime() });
 
   let lastErr = null;
+  let noGamesSeen = null;  /* 2026-09-08 W-1:記著「有可信來源說這天沒有比賽」,但要等全部跑完才採用 */
+  let noGamesAuthoritative = null;  /* 覆審 F-1:中繼(本日頁)說沒球。只記著,等本日頁的候選全部跑完才可能收工 */
+  /* 覆審 F-3:每一個 gameday 給一個時間預算。序列化之後最壞情況是
+     9 候選 × 逾時 × 3 gameday × 2 輪,畫面會被鎖住好幾分鐘;有預算就退化成「這頁跑不完就換下一頁」。 */
+  const GAMEDAY_BUDGET_MS = 45000;
+  /* 覆審 F-3(二):上面那個預算 bound 的是「每一頁」,不是使用者的等待 ——
+     一個聯盟有 2 個 gameday × 2 輪 = 4 份預算,兩個聯盟接力就是最壞 ~400 秒、按鈕全程鎖著。
+     再加一個「整通呼叫」的上限,把兩個聯盟的最壞等待壓到 ~180 秒。 */
+  const CALL_DEADLINE = Date.now() + 90000;
+  let naturalErr = null;   /* 第五輪:本日頁自己的第一個錯誤要留住,失敗訊息不能被備援頁的「沒日期不採用」蓋掉 */
+  /* 覆審 N-1:逾時是「整通抓取的狀態」,不是某一條候選的錯。它必須排在 naturalErr 前面 ——
+     否則本日頁第一條候選的 HTTP 404 會把「其實是我自己時間到了」這個真正的原因蓋掉。 */
+  let timedOutErr = null;
   const maxAttempts = 2;
-  const tryOneUrl = async (url, attempt) => {
+  const naturalGameday = getPlaySportGameday(offsetDays);
+  /* 2026-09-08:「這一頁的內容不是我要的」跟「這台主機連不上」是兩件事。
+     只有後者才該把整個 host 列入這一輪的冷卻名單 —— 前者換一個 gameday 可能就對了
+     (實測:今天那頁掛的是明天的盤 → 內容不符 → 但同一家抓 yesterday 頁是好的)。 */
+  const contentIssue = (msg) => Object.assign(new Error(msg), { __contentIssue: true });
+  const tryOneUrl = async (url, attempt, gameday) => {
     const timeoutMs = getPlaySportCandidateTimeout(url, attempt);
     const text = await fetchTextWithTimeout(url, {}, timeoutMs);
-    const parsedRows = normalizePlaySportAsianRows(parsePlaySportAsianMarketsFromHtml(text));
+    const rawParsed = parsePlaySportAsianMarketsFromHtml(text);
+    if (rawParsed && rawParsed.__playsportNoGames) {
+      /* 2026-09-08 覆審 W-2:「沒有賽事」這個結論只信任兩種來源 ——
+         VM 中繼(伺服器端用雲端那套規則判的、而且回明確的 noGames 布林),或直連玩運彩。
+         公共代理最不可靠:被截斷的原始 HTML、回 200 的錯誤頁、維護頁都長得像空頁。
+         覆審 E-1:而且**一定要是本日頁** —— 備援頁(yesterday/today)是空的,只代表那一天沒球,
+         不能拿來當「我要的這一天沒球」的結論。兩個條件是 AND。 */
+      const trusted = playSportUrlIsTrustedForNoGames(url) && gameday === naturalGameday;
+      if (!trusted) throw contentIssue('這一頁是空的,但它不足以證明今天沒有賽事(來源不可信或不是本日頁)');
+      const none = []; none.__playsportNoGames = true;
+      /* 覆審 E-2 / F-1:只有中繼的結論可以提早收工(而且是在**本日頁的候選全部跑完之後**,
+         不是當場)。中繼的「無賽事」不是看一頁的推論 —— 它是伺服器端跑過多個來源之後的結論,
+         還回明確布林。其餘來源只記錄,等所有 gameday、兩輪都跑完才可能被採用(W-1)。 */
+      none.__playsportNoGamesAuthoritative = playSportUrlIsRelay(url);
+      return none;
+    }
+    const parsedRows = normalizePlaySportAsianRows(rawParsed);
     const targetDate = getTaipeiDateKeyWithOffset(offsetDays);
-    const rows = parsedRows.filter(row => !row.gameDate || row.gameDate === targetDate)
-      .map(row => ({ ...row, _requestedDate:targetDate }));
-    if (parsedRows.length && !rows.length) throw new Error(`抓到盤口但日期不符 ${targetDate}`);
-    if (!rows.length) throw new Error('抓到內容但沒有解析到亞洲盤口');
+    /* v62(第五輪修 R-2):有日期的列一定要等於目標日;**沒有日期**的列(compact 版型、純 HTML 路徑)
+       只有「本日頁」(這個 offset 原本就該打的那一頁)可以放行 —— 備援頁沒日期就不能證明是哪一天的盤,不收。 */
+    const isNatural = gameday === naturalGameday;
+    const rows = parsedRows.filter(row => row.gameDate ? row.gameDate === targetDate : isNatural)
+      .map(row => ({ ...row, _requestedDate:targetDate, _gameday:gameday }));
+    if (parsedRows.length && !rows.length) throw contentIssue(isNatural ? `抓到盤口但日期不符 ${targetDate}` : `備援頁 ${gameday} 的列沒有日期,不採用`);
+    if (!rows.length) throw contentIssue('抓到內容但沒有解析到亞洲盤口');
     return rows;
   };
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -2747,25 +2946,104 @@ async function fetchPlaySportAsianMarkets(confKey, offsetDays) {
       setPlaySportStatus(`${PLAYSPORT_CONFIG[confKey].name} ${getTaipeiDateKeyWithOffset(offsetDays)} 盤口未回來，自動重試 ${attempt + 1}/${maxAttempts}...`, 'status-warn');
       await sleep(1200);
     }
-    const candidates = getPlaySportFetchCandidates(confKey, offsetDays);
-    // 4個一組平行搶答，第一個成功就用，避免逐一等逾時
-    for (let i = 0; i < candidates.length; i += 4) {
-      const chunk = candidates.slice(i, i + 4);
-      const settled = await Promise.all(chunk.map(url =>
-        tryOneUrl(url, attempt).then(rows => ({ rows })).catch(err => {
+    for (const gameday of getPlaySportGamedays(offsetDays)) {   /* 第五輪修 R-3:一個 gameday 跑完沒中,才換下一頁 */
+      /* 冷卻名單的範圍是**一個 gameday**:同一頁抓不到就別再拿同一家打同一頁;
+         但換一頁(tomorrow → today)要重新給機會 —— 那家抓不到明天那頁,不代表抓不到今天那頁
+         (實測:明天頁 404 是目標頁面的問題,不是代理掛了)。
+         誠實註記(覆審 F-4):候選表收斂成「一個 host 一條」之後,同一個 gameday 裡不會有第二條
+         同 host 的候選,所以這份名單目前**永遠不會命中**。留著是因為候選表哪天再長回多條時
+         它就會生效,而且它不花成本;不要把它當成「已經在省流量」的證據。
+         它醒過來的那一天,要**先**修 fetchTextWithTimeout 讓它帶 HTTP status ——
+         現在 4xx(代理忠實轉發目標頁的 404)會被當成「這台主機掛了」而冷卻整家,
+         但那其實是內容問題(換一頁就好),應該走 contentIssue。兩件事要一起醒,分開就會漏。 */
+      const deadHosts = new Set();
+      const gamedayDeadline = Date.now() + GAMEDAY_BUDGET_MS;   /* 覆審 F-3 */
+      /* 覆審 G-1:「這一天沒有比賽」是**搜尋完之後**才成立的結論,所以它必須綁在
+         「產生它的那一頁真的被搜完」這件事上。F-3 的預算會讓候選迴圈提早 break,
+         而 break 出來的迴圈跟自然跑完的迴圈,在迴圈之後長得一模一樣 ——
+         只看「跑到迴圈外面了」等於沒檢查。所以這一頁的無賽事先放暫存,
+         確定 pageFinished 才往上升級成整通呼叫的結論。 */
+      let pageFinished = true;
+      let pageNoGames = null;
+      let pageNoGamesAuth = null;
+      const candidates = getPlaySportFetchCandidates(confKey, offsetDays, gameday);
+      /* 2026-09-08:以前是「4 個一組平行搶答」。那是流量乘數 —— 一次更新 128 個請求,
+         而且第一個成功之後,同批另外 3 個照樣已經送出去了。這些代理是免費的公共服務,
+         我們不該用它們來賽跑。改成**一次一個、成功就走**,而且這一輪失敗過的 host 直接跳過
+         (同一家連不上就是連不上,同一輪再試第二次只是多打它一下)。 */
+      for (const url of candidates) {
+        if (Date.now() > gamedayDeadline || Date.now() > CALL_DEADLINE) {
+          /* 覆審 F-3:這一頁(或整通呼叫)用完預算就走,不要把畫面鎖住。
+             覆審 G-1:而且要記下「這一頁沒搜完」—— 沒搜完就不准下「沒有比賽」的結論。 */
+          const whole = Date.now() > CALL_DEADLINE;
+          pageFinished = false;
+          console.warn(`Playsport:${whole ? '整通呼叫' : '這一頁'}用完時間預算,停止`, confKey, gameday);
+          /* 覆審 note:這裡本來寫 `if (!lastErr)`,但走到預算用完之前一定已經有候選失敗過,
+             lastErr 早就有值 → 這句診斷永遠不會出現在畫面上。改成覆寫,讓「是逾時不是全掛」看得見。 */
+          timedOutErr = new Error(whole
+            ? '整通抓取超過 90 秒,先停下來(背景會重試)'
+            : `${gameday} 頁在 ${GAMEDAY_BUDGET_MS / 1000} 秒內沒抓完`);
+          lastErr = timedOutErr;
+          break;
+        }
+        const host = (() => { try { return new URL(url).host; } catch (e) { return url; } })();
+        if (deadHosts.has(host)) continue;
+        const settled = [await tryOneUrl(url, attempt, gameday).then(rows => ({ rows })).catch(err => {
           console.warn('Playsport 盤口抓取失敗：', url, err);
+          if (!err?.__contentIssue) deadHosts.add(host);   /* 只有連不上/逾時/HTTP 錯誤才冷卻這台 */
           return { err };
-        })
-      ));
-      const hit = settled.find(x => x.rows && x.rows.length);
-      if (hit) {
-        playsportMarketCache.set(cacheKey, hit.rows);
-        playsportMarketFetchStatus.set(cacheKey, { complete:true, source:'parsed_feed', rows:hit.rows.length, at:taiwanTime() });
-        setPlaySportStatus(`${PLAYSPORT_CONFIG[confKey].name} ${getTaipeiDateKeyWithOffset(offsetDays)} 已匯入 ${hit.rows.length} 場亞洲盤口`, 'status-good');
-        return hit.rows;
+        })];
+        /* 2026-09-08 覆審 W-1:「這天沒有比賽」是**推論**,「拿到一場球」是**事實**,事實永遠贏。
+           所以 noGames 在這裡只記下來,絕不在中途收工 —— 不然同一批(甚至後面幾批、後面那個
+           gameday)本來抓得到的真盤會被丟掉。等所有候選、所有 gameday、兩輪都跑完還是沒有
+           任何真資料,才輪到它當結論。 */
+        const ng = settled.find(x => x.rows && x.rows.__playsportNoGames);
+        /* 覆審 G-1:先進「這一頁」的暫存。這一頁沒搜完的話,下面不會把它升級成結論。 */
+        if (ng && !pageNoGames) pageNoGames = ng.rows;
+        if (ng && ng.rows.__playsportNoGamesAuthoritative && !pageNoGamesAuth) pageNoGamesAuth = ng.rows;
+        const hit = settled.find(x => x.rows && x.rows.length);
+        /* 覆審 F-1:這裡**不再**因為中繼說沒球就當場收工。
+           序列化(一次一個候選)之後,中繼是候選 #0 —— 當場收工等於「中繼說沒球,後面 8 個候選
+           一個都不跑」,W-1 講的「事實(真拿到一場球)永遠贏過推論(某一頁是空的)」就被廢掉了。
+           改成:記著它,等**本日頁的候選全部跑完**都沒有人拿到真資料,才在下面收工。
+           季外仍然只花 9 次(本日頁跑完就結束,不會再去打 tomorrow / yesterday 兩頁 × 2 輪)。 */
+        if (hit) {
+          playsportMarketCache.set(cacheKey, hit.rows);
+          playsportMarketFetchStatus.set(cacheKey, { complete:true, source:'parsed_feed', rows:hit.rows.length, gameday, at:taiwanTime() });
+          setPlaySportStatus(`${PLAYSPORT_CONFIG[confKey].name} ${getTaipeiDateKeyWithOffset(offsetDays)} 已匯入 ${hit.rows.length} 場亞洲盤口${gameday === naturalGameday ? '' : `(來自 ${gameday} 頁)`}`, 'status-good');
+          return hit.rows;
+        }
+        lastErr = settled.find(x => x.err)?.err || lastErr;
+        if (gameday === naturalGameday && !naturalErr) naturalErr = settled.find(x => x.err)?.err || null;
       }
-      lastErr = settled.find(x => x.err)?.err || lastErr;
+      /* 覆審 G-1:只有「這一頁真的被搜完」才把它的無賽事升級成整通呼叫的結論。
+         被 F-3 的預算砍斷的那一頁,它的空是「我沒看完」,不是「這天沒球」。 */
+      if (pageFinished && pageNoGames && !noGamesSeen) noGamesSeen = pageNoGames;
+      if (pageFinished && pageNoGamesAuth && !noGamesAuthoritative) noGamesAuthoritative = pageNoGamesAuth;
+      /* 覆審 F-1(原 E-2 搬到這裡):本日頁的候選全部跑完、沒有任何一個拿到真資料,
+         而且中繼明確回報這一天是空的 → 收工。中繼的「無賽事」是伺服器端把多個來源 × 3 個
+         gameday 都跑過之後的結論,我們再去打 tomorrow / yesterday 兩頁 × 2 輪只是重做它的工作。
+         條件是 AND:**本日頁**(備援頁是空的只代表那一天沒球)且**這一頁真的跑完了**(pageFinished)。 */
+      if (gameday === naturalGameday && pageFinished && noGamesAuthoritative) {
+        console.info('Playsport:本日頁跑完沒有任何真資料,且中繼回報這一天沒有賽事,收工', confKey, gameday);
+        /* 這個結論的責任歸屬要看得見:萬一中繼判錯(例如玩運彩維護中被當成季外),
+           畫面上要講得出「是誰說的」,不然就變成又一個沒有徵兆的錯。 */
+        playsportMarketCache.set(cacheKey, noGamesAuthoritative);
+        playsportMarketFetchStatus.set(cacheKey, { complete:true, source:'no_games', rows:0, gameday, at:taiwanTime() });
+        setPlaySportStatus(`${PLAYSPORT_CONFIG[confKey].name} ${getTaipeiDateKeyWithOffset(offsetDays)} 沒有賽事(雲端中繼回報玩運彩這一天是空的)`, 'muted');
+        return noGamesAuthoritative;
+      }
     }
+  }
+  lastErr = timedOutErr || naturalErr || lastErr;   /* 覆審 N-1:逾時優先,不然它會被候選層的錯蓋掉 */
+
+  if (noGamesSeen) {
+    /* 全部跑完都沒有任何一場球,而且有可信來源(VM 中繼 / 直連玩運彩)說這一天是空的
+       → 這是正確答案,不是抓取失敗。季外每輪跑 32 候選 × 2 + 背景重試 20 次就是這樣來的。 */
+    playsportMarketCache.set(cacheKey, noGamesSeen);
+    playsportMarketFetchStatus.set(cacheKey, { complete:true, source:'no_games', rows:0, at:taiwanTime() });
+    setPlaySportStatus(`${PLAYSPORT_CONFIG[confKey].name} ${getTaipeiDateKeyWithOffset(offsetDays)} 沒有賽事(玩運彩這一天是空的)`, 'muted');
+    return noGamesSeen;
   }
 
   console.warn('Playsport 盤口抓取全部失敗', confKey, lastErr);
@@ -2787,10 +3065,16 @@ function stopPlaySportBackgroundRetry() {
 }
 function startPlaySportBackgroundRetry(offsetDays) {
   if (!mlbToggle?.checked) return;
+  const st = playsportMarketFetchStatus.get(`mlb:${offsetDays}:${getTaipeiDateKeyWithOffset(offsetDays)}`);
+  if (st && st.source === 'no_games') return;   /* 沒有賽事就沒什麼好重試的 */
   const token = ++playSportBackgroundRetryToken;
   const targetDate = getTaipeiDateKeyWithOffset(offsetDays);
   let retryCount = 0;
-  const maxRetry = 20;
+  /* 2026-09-08:以前是 20 輪 × 每輪跑完整候選清單。代理是免費的公共服務,
+     用它們做這種輪詢是我們自己的問題,不是它們的。改成 6 輪 + 指數退避:
+     20s / 40s / 80s / 160s / 320s / 600s ≈ 20 分鐘內放棄,總請求量降到原本的 1/8 以下。
+     真的要更新,按一下按鈕比等背景重試快得多。 */
+  const maxRetry = 6;
   const run = async () => {
     if (token !== playSportBackgroundRetryToken || currentOffsetDays !== offsetDays || !mlbToggle?.checked) return;
     retryCount += 1;
@@ -2812,7 +3096,8 @@ function startPlaySportBackgroundRetry(offsetDays) {
       return;
     }
     if (retryCount < maxRetry) {
-      const waitMs = retryCount <= 5 ? 6000 : 15000;
+      const waitMs = Math.min(20000 * Math.pow(2, retryCount - 1), 600000);   /* 指數退避,上限 10 分鐘 */
+      setPlaySportStatus(`MLB ${targetDate} 盤口還沒回來，${Math.round(waitMs / 1000)} 秒後再試一次(${retryCount}/${maxRetry})；要馬上更新請按按鈕`, 'status-warn');
       playSportBackgroundRetryTimer = setTimeout(run, waitMs);
     } else {
       setPlaySportStatus(`MLB ${targetDate} 仍未匯入亞洲盤口；已停止背景重試`, 'status-warn');
@@ -2841,7 +3126,12 @@ function findPlaySportAsianMarket(markets, awayName, homeName, eventIso) {
   return { ...candidates[0], _uniqueMatch:true };
 }
 function describePlaySportMarket(market) {
-  if (!market?.asianLine) return '未抓到';
+  if (!market?.asianLine) {
+    /* 第五輪修 R-11:配到了、只是讓分格空(大小分還在)不能寫「未抓到」—— 那個字串會被寫上雲端蓋掉既有盤口 */
+    const t = market?.totalLine;
+    if (t !== null && t !== undefined && t !== '' && Number.isFinite(Number(t)) && Number(t) > 0) return `大小 ${t}｜讓分未開${market.timeText ? '｜' + market.timeText : ''}`;
+    return '未抓到';
+  }
   return `${market.asianLine.replace('%','')}｜${market.timeText || ''}`;
 }
 
@@ -3459,8 +3749,31 @@ function legs2026TaiwanSpreadValue(playSportMarket){
   return points;
 }
 function legs2026ConfirmedRegularSeason(event){
+  /* 第五輪 R-6(第二個消費點):跟 isOfficialGame 同一條規則 —— 賽季型態只看 event.season;
+     season 缺席時 getSeasonTypeValue 會退到 competitions[0].type(比賽型態,標準賽 id "1"),那不是賽季。 */
+  const st = event?.season?.type;
+  if (st !== undefined && st !== null && String(st) === '2') return true;
+  const slug = String(event?.season?.slug || '').toLowerCase();
+  if (slug.includes('regular')) return true;
+  if (st !== undefined && st !== null) return false;   /* season.type 有值但不是 2 → 不是例行賽 */
   const t = getSeasonTypeValue(event);
-  return t === '2' || t.includes('regular');
+  return t.includes('regular');
+}
+function legs2026StarterFor(zh, usDay){
+  /* 第五輪修 R-7:隊名@美東日 → 先發紀錄;雙重賽(dh)分不出是哪一場的投手 → null → E1∪H7 資料不足 */
+  const era = (typeof mlbProbSpByZh === 'object' && mlbProbSpByZh) ? mlbProbSpByZh : {};
+  const rec = era[`${zh}@${usDay}`];
+  if (!rec || rec.dh) return null;
+  return rec;
+}
+function legs2026UsEastDate(iso){
+  /* v62:一場球在美東是哪一天(YYYY-MM-DD),StatsAPI 的 officialDate 就是這個口徑 */
+  if (!iso) return '';   /* 第五輪修 R-14:new Date(null) 是 1970 */
+  try {
+    const d = new Date(iso);
+    if (!Number.isFinite(d.getTime())) return '';
+    return new Intl.DateTimeFormat('en-CA', { timeZone:'America/New_York', year:'numeric', month:'2-digit', day:'2-digit' }).format(d);
+  } catch (e) { return ''; }
 }
 function buildLegs2026Context(leagueKey, left, right, market, playSportMarket, usSnapshot, event){
   // rows 已依 away 優先排序 → left = 客隊,right = 主隊
@@ -3492,16 +3805,17 @@ function buildLegs2026Context(leagueKey, left, right, market, playSportMarket, u
     ctx.twLineKey = LEGS2026.twLineKeyFromText(playSportMarket?.asianBanType || playSportMarket?.asianLine || playSportMarket?.banType || '');
     if (!ctx.twLineKey){
       const abs = legs2026TaiwanSpreadValue(playSportMarket);
+      /* 第五輪修 R-17:只有剛好等於四個盤型的線才給鍵;1.5 這種不能塞成「1-」(1.25)去結算 —— 對不到就 NEED,跟雲端一樣 */
       if (Number.isFinite(abs)){
-        if (abs > 0.5 && abs <= 1.0) ctx.twLineKey = '1+';
-        else if (abs > 1.0 && abs <= 1.5) ctx.twLineKey = '1-';
-        else if (abs > 1.5 && abs <= 2.0) ctx.twLineKey = '2+';
-        else if (abs > 2.0 && abs <= 2.5) ctx.twLineKey = '2-';
+        if (Math.abs(abs - 0.75) < 1e-9) ctx.twLineKey = '1+';
+        else if (Math.abs(abs - 1.25) < 1e-9) ctx.twLineKey = '1-';
+        else if (Math.abs(abs - 1.75) < 1e-9) ctx.twLineKey = '2+';
+        else if (Math.abs(abs - 2.25) < 1e-9) ctx.twLineKey = '2-';
       }
     }
-    const era = (typeof mlbProbSpByZh === 'object' && mlbProbSpByZh) ? mlbProbSpByZh : {};
-    const aEra = legs2026Num(era?.[away?.name]?.era3);
-    const hEra = legs2026Num(era?.[home?.name]?.era3);
+    const usDay = legs2026UsEastDate(event?.date);       /* v62:用這場自己的美東日去查先發 */
+    const aEra = legs2026Num(legs2026StarterFor(away?.name, usDay)?.era3);
+    const hEra = legs2026Num(legs2026StarterFor(home?.name, usDay)?.era3);
     ctx.awayEra3 = aEra; ctx.homeEra3 = hEra;
     ctx.favEra3 = taiwanFavoriteSide ? (favIsHome ? hEra : aEra) : null;
     ctx.dogEra3 = taiwanFavoriteSide ? (favIsHome ? aEra : hEra) : null;
@@ -4325,9 +4639,16 @@ function buildNear10Card(leagueName, leagueKey, event, teamStatsMap, playSportMa
   const lockedInstantSpread = hasValue(existingPayload?.['即時盤口']) ? existingPayload['即時盤口'] : currentSpreadText;
   const currentNumericSpread = market.spread != null ? round1(market.spread) : '';
   // NBA 的亞洲讓分盤自動同步數字讓分盤；MLB 只使用本次從 Playsport 匯入的實際盤口。
+  /* 2026-09-08 修 N-1(第五輪標了 note、實跑證明會誤導人):
+     大小分盤抓不到時會退回上一次存的值,亞洲讓分盤卻沒有這個備援 —— 於是整場都沒抓到的時候,
+     畫面長成「大小分 8.5 有、讓分未匯入」,看起來像只有讓分沒抓到,其實是整場都沒抓到。
+     (實例:2026-09-08 大都會@馬林魚,玩運彩明明有「主1分贏50%」,九條抓取路全滅。)
+     改成:兩欄同一個規矩 —— 這輪抓到就用這輪的;沒抓到就退回舊值,而且**標明它是舊的**。 */
+  const asianSpreadIsFresh = leagueKey === 'nba' ? true : hasValue(autoAsianSpread);
   const lockedAsianSpread = leagueKey === 'nba'
     ? (hasValue(existingPayload?.['亞洲讓分盤']) ? existingPayload['亞洲讓分盤'] : currentNumericSpread)
-    : autoAsianSpread;
+    : (hasValue(autoAsianSpread) ? autoAsianSpread
+       : (hasValue(existingPayload?.['亞洲讓分盤']) ? existingPayload['亞洲讓分盤'] : ''));
   const payload = {
     '比賽ID': gameId,
     '聯盟': leagueName,
@@ -4342,7 +4663,9 @@ function buildNear10Card(leagueName, leagueKey, event, teamStatsMap, playSportMa
     '主客讓分盤': existingPayload && Object.prototype.hasOwnProperty.call(existingPayload, '主客讓分盤') ? existingPayload['主客讓分盤'] : currentSpreadText,
     '即時盤口': lockedInstantSpread,
     '亞洲讓分盤': lockedAsianSpread,
-    '亞洲盤口來源': leagueKey === 'mlb' ? (hasValue(autoAsianSpread) ? 'Playsport' : '') : (hasValue(lockedAsianSpread) ? (existingPayload?.['亞洲盤口來源'] || '雲端備援') : ''),
+    '亞洲盤口來源': leagueKey === 'mlb'
+      ? (asianSpreadIsFresh ? 'Playsport' : (hasValue(lockedAsianSpread) ? 'Playsport舊值(這輪沒抓到)' : ''))
+      : (hasValue(lockedAsianSpread) ? (existingPayload?.['亞洲盤口來源'] || '雲端備援') : ''),
     'Playsport盤口': leagueKey === 'mlb' ? (playSportMarket ? describePlaySportMarket(playSportMarket) : '') : '',
     'MLB自動盤口版本': leagueKey === 'mlb' ? 'playsport_actual_market_filter_v1' : '',
     'MLB規則預估盤口': leagueKey === 'mlb' ? (picks.modelAsianLine || '') : '',
@@ -4388,7 +4711,7 @@ function buildNear10Card(leagueName, leagueKey, event, teamStatsMap, playSportMa
     '大小分盤': leagueKey === 'mlb'
       ? (isFiniteNum(picks.mlbTotalLine) ? round1(picks.mlbTotalLine) : (existingPayload && Object.prototype.hasOwnProperty.call(existingPayload, '大小分盤') ? existingPayload['大小分盤'] : ''))
       : (existingPayload && Object.prototype.hasOwnProperty.call(existingPayload, '大小分盤') ? existingPayload['大小分盤'] : (market.total != null ? round1(market.total) : '')),
-    'MLB近N視窗JSON': leagueKey === 'mlb' ? JSON.stringify({ away:left.wins || null, home:right.wins || null, awayGames:left.gamesCount || 0, homeGames:right.gamesCount || 0, awaySp:(typeof mlbProbSpByZh !== 'undefined' && mlbProbSpByZh[left.name]) || null, homeSp:(typeof mlbProbSpByZh !== 'undefined' && mlbProbSpByZh[right.name]) || null }) : '',
+    'MLB近N視窗JSON': leagueKey === 'mlb' ? JSON.stringify({ away:left.wins || null, home:right.wins || null, awayGames:left.gamesCount || 0, homeGames:right.gamesCount || 0, awaySp:legs2026StarterFor(left.name, legs2026UsEastDate(event?.date)), homeSp:legs2026StarterFor(right.name, legs2026UsEastDate(event?.date)) }) : '',
     '客隊近10場平均得分': left.avgAll ? round1(left.avgAll.pf) : '',
     '客隊近10場平均失分': left.avgAll ? round1(left.avgAll.pa) : '',
     '客隊近10場平均淨值': awayNetText,
@@ -4450,8 +4773,10 @@ function buildNear10Card(leagueName, leagueKey, event, teamStatsMap, playSportMa
       payload['MLB加注標籤'] = '';
       payload['MLB讓分有量標籤'] = '';
       payload['MLB補洞標籤'] = '';
-      payload['亞洲盤口來源'] = 'Playsport未匯入';
-      payload['MLB盤口判斷'] = '未抓到Playsport亞洲盤口，PASS';
+      payload['亞洲盤口來源'] = hasValue(lockedAsianSpread) ? 'Playsport舊值(這輪沒抓到)' : 'Playsport未匯入';
+      payload['MLB盤口判斷'] = hasValue(lockedAsianSpread)
+        ? '這輪沒抓到Playsport亞洲盤口，畫面上是上次的舊值，不當判定依據，PASS'
+        : '未抓到Playsport亞洲盤口，PASS';
       payload['MLB待觀察候選'] = '';
     }
   }
@@ -4880,7 +5205,7 @@ function buildMlbMarketInlineCellHtml(gameId, side) {
     <div class="mlb-market-box mlb-market-inline" data-game-id="${escapeHtml(gameId)}">
       <div class="mlb-inline-market-label">${side}盤｜實盤判斷</div>
       <div class="mlb-auto-market-cell">
-        <div class="mlb-auto-market-main">${escapeHtml(line ? line.replace('%','') : '未匯入')}</div>
+        <div class="mlb-auto-market-main">${escapeHtml(line ? (line.replace('%','') + (String(payload['亞洲盤口來源'] || '').includes('舊值') ? '（舊值）' : '')) : '未匯入')}</div>
         <div class="mlb-auto-market-sub">${escapeHtml(decision || raw || '等待 Playsport 亞洲盤')}</div>
       </div>
     </div>`;
