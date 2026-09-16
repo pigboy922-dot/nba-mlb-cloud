@@ -596,9 +596,14 @@ function updateMlbFixedPickPanel() {
   const rowHtml = (item, isNeed=false) => {
     const { entry, result } = item;
     const pick = result?.pickTeam || result?.pick || (isNeed ? '資料不足' : '待確認');
+    /* 2026-09-16 原因層:清單面板也要講「為什麼缺」,不只講缺什麼 */
+    const whyLines = isNeed
+      ? (result?.needWhy || []).map(w => `<div>↳ <b>${escapeHtml(w.kindZh || '')}</b>｜${escapeHtml(w.item || '')}：${escapeHtml(w.why || '')}</div>`).join('')
+      : '';
     const detail = isNeed
       ? `缺少：${(result?.need || []).join('、') || '必要資料'}`
       : (result?.detail || '已由 LEGS2026 v2 凍結');
+    const whyHtml = whyLines ? `<div style="margin-top:4px;font-size:11px;opacity:.85;line-height:1.5;">${whyLines}</div>` : '';
     return `<div class="mlb-fixed-pick-row${isNeed ? ' is-watch' : ''}">
       <div class="mlb-fixed-pick-title">${escapeHtml(entry.matchup)}</div>
       <div class="mlb-fixed-pick-meta">
@@ -606,7 +611,7 @@ function updateMlbFixedPickPanel() {
         <span class="mlb-fixed-pick-pill ${isNeed ? 'line-minus' : 'line-plus'}">${escapeHtml(result.leg || '')}</span>
         <span class="mlb-fixed-pick-pill">${isNeed ? 'NEED' : 'BET'}</span>
       </div>
-      <div class="mlb-fixed-pick-text"><div class="mlb-fixed-pick-main">${escapeHtml(pick)}</div><div class="mlb-fixed-pick-sub">${escapeHtml(detail)}</div></div>
+      <div class="mlb-fixed-pick-text"><div class="mlb-fixed-pick-main">${escapeHtml(pick)}</div><div class="mlb-fixed-pick-sub">${escapeHtml(detail)}${whyHtml}</div></div>
     </div>`;
   };
   mlbFixedPickPanelEl.style.display = 'block';
@@ -1975,6 +1980,10 @@ const MLB_OPENING_FAVORITE_STORAGE_KEY = 'mlb_opening_favorite_side_v1';
 //     但 C1E1 版已無任何判定讀它(原本只有腿3 用,腿3 已移除)。
 const MLB_STATSAPI = 'https://statsapi.mlb.com/api/v1';
 let mlbProbSpByZh = {};
+/* 2026-09-16 原因層:「資料不足」旁邊要標「還沒有 / 抓失敗 / 對不上」。
+   這兩個是事實記錄,不參與判定。 */
+let mlbProbSpFetchFailed = false;             /* StatsAPI 先發那一輪整批沒抓到 */
+const scoreboardFailDays = new Set();         /* 回看的哪幾天 ESPN 沒抓到(近N 缺的原因) */
 const MLB_STATSAPI_NAME_ZH = {
  'Arizona Diamondbacks':'亞利桑那響尾蛇','Atlanta Braves':'亞特蘭大勇士','Baltimore Orioles':'巴爾的摩金鶯','Boston Red Sox':'波士頓紅襪',
  'Chicago Cubs':'芝加哥小熊','Chicago White Sox':'芝加哥白襪','Cincinnati Reds':'辛辛那提紅人','Cleveland Guardians':'克里夫蘭守護者',
@@ -1992,27 +2001,39 @@ function mlbIpToThirds(ip) {
   return w + Math.round((n - w) * 10) / 3;
 }
 async function fetchMlbPitcherLast3Era(pid) {
+  return (await fetchMlbPitcherLast3EraEx(pid)).era3;
+}
+async function fetchMlbPitcherLast3EraEx(pid) {
+  /* 2026-09-16 原因層:回 {era3, fetched, starts}。以前只回 null,
+     「兩季都抓失敗」跟「真的不滿 3 場先發」分不出來,畫面一律寫資料不足。 */
+  let fetched = false, starts = 0;
   try {
     const year = new Date().getFullYear();
     let rows = [];
     for (const season of [year, year - 1]) {
-      const r = await fetch(`${MLB_STATSAPI}/people/${pid}/stats?stats=gameLog&group=pitching&season=${season}`);
+      let r;
+      try { r = await fetch(`${MLB_STATSAPI}/people/${pid}/stats?stats=gameLog&group=pitching&season=${season}`); }
+      catch (e) { continue; }
       if (!r.ok) continue;
+      if (season === year) fetched = true;   /* 覆審 N-4:只有當季抓到才算抓到 */
       const j = await r.json();
       const sp = (j?.stats?.[0]?.splits || []).filter(s => Number(s?.stat?.gamesStarted) >= 1);
       rows = rows.concat(sp.map(s => ({ date: s.date, er: Number(s?.stat?.earnedRuns || 0), ip: mlbIpToThirds(s?.stat?.inningsPitched) })));
       if (rows.length >= 3) break;
     }
     rows.sort((a, b) => new Date(b.date) - new Date(a.date));
+    starts = rows.length;
     const last3 = rows.slice(0, 3);
-    if (last3.length < 3) return null;
+    if (last3.length < 3) return { era3:null, fetched, starts };
     const ip = last3.reduce((s, x) => s + x.ip, 0);
-    if (ip <= 0) return null;
-    return last3.reduce((s, x) => s + x.er, 0) / ip * 9;
-  } catch (e) { return null; }
+    if (ip <= 0) return { era3:null, fetched, starts };
+    return { era3: last3.reduce((s, x) => s + x.er, 0) / ip * 9, fetched, starts };
+  } catch (e) { return { era3:null, fetched, starts }; }
 }
 async function fetchMlbProbableStarters(targetTaipeiDateKey) {
   mlbProbSpByZh = {};
+  mlbProbSpFetchFailed = false;
+  let okDays = 0;
   try {
     /* v62 2026-09-05:原本 base.toISOString() 是 UTC,台北午夜 = UTC 前一天,實際抓成 [D-2, D-1],
        台北日的午前尾巴場拿不到先發、還吃到 D-2 的殘值;而且鍵只有隊名,同隊兩天都有先發時互相覆蓋。
@@ -2021,11 +2042,15 @@ async function fetchMlbProbableStarters(targetTaipeiDateKey) {
     const days = [dayStr(-1), dayStr(0)];
     const games = [];
     for (const dd of days) {
-      const r = await fetch(`${MLB_STATSAPI}/schedule?sportId=1&date=${dd}&hydrate=probablePitcher`);
+      let r;
+      try { r = await fetch(`${MLB_STATSAPI}/schedule?sportId=1&date=${dd}&hydrate=probablePitcher`); }
+      catch (e) { continue; }
       if (!r.ok) continue;
+      okDays++;
       const j = await r.json();
       (j?.dates || []).forEach(dt => (dt?.games || []).forEach(g => { g._fetchDay = dd; games.push(g); }));
     }
+    if (!okDays) mlbProbSpFetchFailed = true;    /* 兩天都沒抓到 = 整批抓失敗,不是沒公布 */
     const pids = new Set();
     for (const g of games) {
       for (const side of ['away', 'home']) {
@@ -2045,10 +2070,14 @@ async function fetchMlbProbableStarters(targetTaipeiDateKey) {
       }
     }
     await Promise.all(Array.from(pids).map(async pid => {
-      const era = await fetchMlbPitcherLast3Era(pid);
-      for (const k in mlbProbSpByZh) if (mlbProbSpByZh[k].id === pid) mlbProbSpByZh[k].era3 = era;
+      const ex = await fetchMlbPitcherLast3EraEx(pid);
+      for (const k in mlbProbSpByZh) if (mlbProbSpByZh[k].id === pid) {
+        mlbProbSpByZh[k].era3 = ex.era3;
+        mlbProbSpByZh[k].era3Fetched = ex.fetched;   /* 原因層:false = 那一輪沒抓到 */
+        mlbProbSpByZh[k].era3Starts = ex.starts;     /* 原因層:找到幾場先發(<3 就不給) */
+      }
     }));
-  } catch (e) { console.warn('StatsAPI 先發抓取失敗（ERA 觀察腿停用，其餘頁面功能不受影響）', e); }
+  } catch (e) { mlbProbSpFetchFailed = true; console.warn('StatsAPI 先發抓取失敗（ERA 觀察腿停用，其餘頁面功能不受影響）', e); }
 }
 
 function getMlbOpeningFavoriteStore() {
@@ -2324,9 +2353,11 @@ async function getScoreboard(conf, yyyymmdd) {
     }
     if (!data) {
       scoreboardCache.delete(key);
+      scoreboardFailDays.add(key);            /* 原因層:這一天沒抓到,不是沒球 */
       throw lastErr || new Error('scoreboard 抓取失敗');
     }
     const events = Array.isArray(data?.events) ? data.events : [];
+    scoreboardFailDays.delete(key);
     scoreboardCache.set(key, events);
     return events;
   })();
@@ -3505,7 +3536,15 @@ const LEGS2026 = (function () {
   /* ------------------------------------------------------------ MLB E1∪H7 */
   function mlbE1H7(c) {
     const lk = c.twLineKey;
-    if (!lk) return { leg: 'E1∪H7', market: 'spread', status: 'NEED', need: ['台盤讓分盤型'] };
+    if (!lk) {
+      /* 2026-09-17(Joe 紅襪@遊騎兵 主0+50%):抓到盤但盤型不在 1+/1−/2+/2− 表裡(0 分盤、3 分盤、小數盤)
+         = **不適用**,不是資料不足 —— 資料很齊,只是這條腿不吃這種盤。雲端 09-02 就有這一段(tw_line_seen),
+         網頁一直沒有,所以 0 分盤整場被講成「資料不足:台盤讓分盤型」。 */
+      const txt = String(c.twLineText || '').replace(/\s+/g, '');
+      if (/^(?:客|主)\d+(?:\.\d+)?/.test(txt))
+        return { leg: 'E1∪H7', market: 'spread', status: 'PASS', why: `台盤讓分 ${txt} 不在 1−/2−(這腿只吃 1−/2−)` };
+      return { leg: 'E1∪H7', market: 'spread', status: 'NEED', need: ['台盤讓分盤型'] };
+    }
     if (lk !== '1-' && lk !== '2-')
       return { leg: 'E1∪H7', market: 'spread', status: 'PASS', why: `盤型 ${lk} 不在 1−/2−` };
     const fe = num(c.favEra3), de = num(c.dogEra3), nd5 = num(c.netDiff5);
@@ -3803,6 +3842,7 @@ function buildLegs2026Context(leagueKey, left, right, market, playSportMarket, u
   if (leagueKey === 'mlb'){
     ctx.twTotal = twTotalOk ? twTotalRaw : null;
     ctx.twLineKey = LEGS2026.twLineKeyFromText(playSportMarket?.asianBanType || playSportMarket?.asianLine || playSportMarket?.banType || '');
+    ctx.twLineText = String(playSportMarket?.asianBanType || playSportMarket?.asianLine || playSportMarket?.banType || '');   /* 引擎用它分辨「沒抓到」與「抓到但盤型不適用」 */
     if (!ctx.twLineKey){
       const abs = legs2026TaiwanSpreadValue(playSportMarket);
       /* 第五輪修 R-17:只有剛好等於四個盤型的線才給鍵;1.5 這種不能塞成「1-」(1.25)去結算 —— 對不到就 NEED,跟雲端一樣 */
@@ -3884,10 +3924,15 @@ function renderLegs2026Html(results, ctx, leagueKey, left, right, market, playSp
   } else {
     html += `<div style="font-weight:800;opacity:.7;margin-bottom:4px;">本場不出手</div>`;
   }
+  const lates = results.filter(r=>r.status==='LATE');
+  if (lates.length){
+    html += `<div style="font-size:11px;opacity:.7;padding:3px 8px;margin:3px 0;border-left:3px solid #9ca3af;border-radius:4px;">${esc(lates[0].why || '已開賽')} — 不再判定(${lates.map(r=>esc(r.leg)).join('、')})</div>`;
+  }
   if (needs.length){
     html += needs.map(r=>`
       <div style="border-left:3px solid #d97706;padding:3px 8px;margin:3px 0;background:rgba(217,119,6,.08);border-radius:4px;font-size:11px;">
         <b>${esc(r.leg)}</b> 資料不足:${esc((r.need||[]).join('、'))} — <b>不出手</b>
+        ${(r.needWhy||[]).map(w=>`<div style="opacity:.8;padding-left:8px;">↳ <b>${esc(w.kindZh)}</b>｜${esc(w.item)}:${esc(w.why)}</div>`).join('')}
       </div>`).join('');
   }
   if (passes.length){
@@ -3922,6 +3967,140 @@ function legs2026EventGate(event, nowMs=Date.now()){
   if (!scheduled || live || completed) return { allowed:false, reason:'賽事不是可確認的賽前 scheduled 狀態', startMs };
   if (!Number.isFinite(Number(nowMs)) || Number(nowMs) >= startMs) return { allowed:false, reason:'已到或超過 T0', startMs };
   return { allowed:true, reason:'T0 前且狀態為 scheduled', startMs };
+}
+/* ═══════ 2026-09-16 原因層:「資料不足」旁邊標「還沒有 / 抓失敗 / 對不上」 ═══════
+   引擎只講**缺什麼**(need 清單),這一層講**為什麼缺**。跟雲端 needwhy.py 逐行對照,
+   分類與說明要一樣 —— LINE 跟網頁對同一場講不同的原因,就是新的 bug。
+   **只讀不改**:need 清單、狀態、注碼全部照舊;判不出來就回 unknown,不猜。 */
+const LEGS2026_NEEDWHY_ZH = { wait:'還沒有', fetch:'抓失敗', mismatch:'對不上', unknown:'原因不明' };
+function legs2026PlaySportExplain(markets, awayName, homeName, eventIso){
+  /* 對應雲端 playsport.explain 的 why:day_not_listed / away_name_mismatch / home_name_mismatch / ambiguous / ok / none */
+  if (!Array.isArray(markets) || !markets.length) return { why:'none' };
+  const eventDate = toTaipeiDateKey(eventIso);
+  const sameDay = markets.filter(row => (row.gameDate || row._requestedDate) === eventDate);
+  if (!sameDay.length) return { why:'day_not_listed' };
+  const awayHit = sameDay.filter(row => playSportTeamMatches(awayName, row.awayTeam));
+  const homeHit = sameDay.filter(row => playSportTeamMatches(homeName, row.homeTeam));
+  const both = sameDay.filter(row => playSportTeamMatches(awayName, row.awayTeam) && playSportTeamMatches(homeName, row.homeTeam));
+  if (both.length > 1) return { why:'ambiguous', n:both.length };
+  if (both.length === 1) return { why:'ok' };
+  if (!awayHit.length && homeHit.length) return { why:'away_name_mismatch' };
+  if (awayHit.length && !homeHit.length) return { why:'home_name_mismatch' };
+  return { why:'not_listed' };   /* 兩隊都對不到任何一列:玩運彩這天沒列這場 */
+}
+function legs2026NeedWhy(leagueKey, need, f){
+  f = f || {};
+  const tw = (item) => {
+    if (item.includes('不在') || item.includes('合理區間'))
+      return ['mismatch', '玩運彩抓到的大小分不在這個聯盟的合理區間,通常是解析抓到別場/別聯盟的數字'];   /* 覆審 B-1 */
+    if (f.psFetchFailed) return ['fetch', '玩運彩這一輪沒抓到(來源掛了),再按一次'];
+    if (f.psNoGames) return ['wait', '玩運彩這一天沒有列任何比賽'];
+    const why = (f.psExplain && f.psExplain.why) || '';
+    if (why === 'different_day' || why === 'day_not_listed') return ['wait', '玩運彩還沒掛這一天的盤'];
+    if (why === 'home_name_mismatch' || why === 'away_name_mismatch')
+      return ['mismatch', (why.startsWith('home') ? '主隊' : '客隊') + '隊名對不到玩運彩的寫法(要補別名表)'];
+    if (why === 'ambiguous') return ['mismatch', '玩運彩同一天有兩場同樣兩隊、分不出哪一場(雙重賽或時間欄被截掉)'];
+    if (f.psMatched) {
+      if (item.includes('大小')) return ['wait', '玩運彩這場配到了,但大小分那一格還沒開'];
+      if (item.includes('讓分')) return ['wait', '玩運彩這場配到了,但讓分那一格還沒開'];
+      return ['wait', '玩運彩這場配到了,但這個盤還沒開'];
+    }
+    if (!(f.psRows > 0)) return ['wait', '玩運彩這一天還沒有任何盤'];
+    if (why === 'not_listed') return ['wait', '玩運彩這一天有列別場,但沒列這一場'];
+    return ['unknown', '台盤有列、也沒對不上,但沒配到這場 —— 把卡片貼給我'];
+  };
+  const us = (item) => {
+    if (f.espnScoreboardFailed) return ['fetch', 'ESPN 賽程這一輪沒抓到,再按一次'];
+    /* 覆審 B-2:布林會丟掉方向 —— 已經打完的球會被講成「還是明天」。有號差:+1 美東明天、−1 美東昨天 */
+    let delta = f.usEastDelta;
+    if (delta === undefined || delta === null) delta = (f.usEastToday === false) ? 1 : 0;
+    if (delta > 0) return ['wait', 'ESPN 只在美東當天才給盤,這場在美東還是明天'];
+    if (delta < 0) return ['wait', '這場在美東是昨天的賽程,ESPN 賽後會把盤拿掉'];
+    if (item.includes('賠率')) {
+      if (f.usTotal !== null && f.usTotal !== undefined) return ['wait', 'ESPN 有線但還沒給兩邊賠率(或只給一邊),晚一點會補'];
+      if (f.psIntlTotal !== null && f.psIntlTotal !== undefined) return ['wait', 'ESPN 沒開,玩運彩國際盤有線但缺兩邊賠率,晚一點會補'];
+      return ['wait', 'ESPN 還沒開這場的大小分'];
+    }
+    return ['wait', 'ESPN 還沒開這場的大小分(通常開打前幾小時才有)'];
+  };
+  const era = () => {
+    if (f.spFetchFailed) return ['fetch', 'StatsAPI 先發投手這一輪沒抓到,再按一次'];
+    if (!f.favName) return ['wait', '台盤還沒有讓分方,判不出誰是讓分方'];
+    if (f.favNameNotInStatsTable) return ['mismatch', `「${f.favName}」不在 StatsAPI 隊名表裡(要補表)`];
+    const sp = f.favStarter || {};
+    if (sp.dh) return ['wait', '雙重賽兩個先發分不出哪場,整組不判'];
+    if (!sp.id && !sp.name) return ['wait', '球隊還沒公布這場的先發投手(通常開打前幾小時公布)'];
+    if (sp.era3Fetched === false) return ['fetch', `先發 ${sp.name || ''} 的逐場紀錄這一輪沒抓到,再按一次`];
+    if (Number.isFinite(sp.era3Starts) && sp.era3Starts < 3) return ['wait', `先發 ${sp.name || ''} 本季+去年只有 ${sp.era3Starts} 場先發,不滿 3 場不算`];
+    return ['unknown', `先發 ${sp.name || ''} 有公布但 ERA 算不出來 —— 把卡片貼給我`];
+  };
+  const form = (item) => {
+    if (f.histFailed) return ['fetch', 'ESPN 掛了、改用官方比分也沒抓到,近N這一輪算不出來'];
+    if (leagueKey === 'nba' && f.fallback) return ['fetch', 'ESPN 掛了,NBA 沒有官方比分備援,近N這一輪算不出來'];   /* 雲端才有的模式,鏡像過來保持一致 */
+    const low = item.toLowerCase();
+    const n = (item.includes('10') || item.includes('本季場數') || low.includes('edge')) ? 10 : item.includes('5') ? 5 : item.includes('3') ? 3 : null;
+    if (n === null) {   /* 覆審 N-5:休息差這種不是 N 視窗的統計,推不出 n 就不編數字 */
+      if (!f.favName && (low.includes('diff') || item.includes('受讓') || item.includes('讓分方') || item.includes('休息差'))) return ['wait', '台盤還沒有讓分方,算不出讓分方對受讓方的差'];
+      if (f.formFailDays > 0) return ['fetch', `回看的 ${f.formFailDays} 天 ESPN 沒抓到,再按一次`];
+      return ['unknown', '這一項不是近N視窗,場數也夠,但還是空的 —— 把卡片貼給我'];
+    }
+    const short = [];
+    if (Number.isFinite(f.gamesAway) && f.gamesAway < n) short.push(`客隊 ${f.gamesAway} 場`);
+    if (Number.isFinite(f.gamesHome) && f.gamesHome < n) short.push(`主隊 ${f.gamesHome} 場`);
+    if (short.length) return ['wait', `本季還沒打滿近${n}(${short.join('、')}),開季初本來就這樣`];
+    if (f.formFailDays > 0) return ['fetch', `回看的 ${f.formFailDays} 天 ESPN 沒抓到,近N缺了幾場,再按一次`];
+    if (!f.favName && (item.includes('Diff') || item.includes('受讓') || item.includes('讓分方'))) return ['wait', '台盤還沒有讓分方,算不出讓分方對受讓方的差'];
+    return ['unknown', '場數夠、也沒抓失敗,但近N還是空的 —— 把卡片貼給我'];
+  };
+  return (need || []).map(item => {
+    const s = String(item);
+    let r;
+    if (s.includes('台盤') || s.includes('Playsport')) r = tw(s);
+    else if (s.includes('美盤') || s.includes('ESPN MLB')) r = us(s);
+    else if (s.includes('近5淨值差')) r = form(s);
+    else if (s.includes('ERA')) r = era();
+    else if (['近','diff','本季場數','edge','休息差','轉弱','節奏'].some(t => s.toLowerCase().includes(t))) r = form(s);
+    else if (s.includes('已開賽') || s.includes('已完賽') || s.includes('開賽時間')) r = ['wait', '時間到了,不是資料問題'];
+    else if (s.includes('season type')) r = ['wait', 'ESPN 還沒標這場是例行賽還是季後賽'];
+    else if (s.includes('帳本')) r = ['fetch', '本機瀏覽器儲存空間問題(清一下 localStorage),不是資料來源'];
+    else if (s.includes('凍結盤口')) r = ['wait', '這注落地時沒有凍結到盤口,結算要等補抓'];
+    else r = ['unknown', '這一項還沒分類 —— 把卡片貼給我'];
+    return { item:s, kind:r[0], kindZh:LEGS2026_NEEDWHY_ZH[r[0]], why:r[1] };
+  });
+}
+function legs2026NeedFacts(leagueKey, ctx, event, playSportMarkets, playSportMarket, left, right){
+  /* 把這一輪抓到的「事實」收成一包給原因層。全部是已經在手上的狀態,不多打任何一次網路。 */
+  const dateKey = toTaipeiDateKey(event?.date);
+  let ps = null;
+  try { for (const [k, v] of playsportMarketFetchStatus) { if (k.startsWith(`${leagueKey}:`) && k.endsWith(`:${dateKey}`)) ps = v; } } catch (e) {}
+  const psRows = Array.isArray(playSportMarkets) ? playSportMarkets.length : 0;
+  const usDay = legs2026UsEastDate(event?.date);
+  const todayUs = legs2026UsEastDate(new Date().toISOString());
+  const fav = ctx?.favName || '';
+  const spRaw = (leagueKey === 'mlb' && fav && usDay) ? (mlbProbSpByZh[`${fav}@${usDay}`] || null) : null;
+  const statsNames = leagueKey === 'mlb' ? new Set(Object.values(MLB_STATSAPI_NAME_ZH || {})) : null;
+  let failDays = 0;
+  try { for (const k of scoreboardFailDays) if (k.startsWith(`${leagueKey}:`)) failDays++; } catch (e) {}
+  return {
+    /* 排除 in_progress 只在「建卡前一定 await 完 fetchPlaySportAsianMarkets」的前提下成立(loadGames 現況);
+       哪天改成非阻塞,這裡會靜默退化成 unknown。 */
+    psFetchFailed: !!(ps && ps.complete === false && ps.reason && ps.reason !== 'in_progress' && ps.reason !== 'unsupported_league'),
+    psNoGames: !!(ps && ps.source === 'no_games') || !!(playSportMarkets && playSportMarkets.__playsportNoGames),
+    psRows,
+    psExplain: playSportMarket ? { why:'ok' } : legs2026PlaySportExplain(playSportMarkets, left?.name, right?.name, event?.date),
+    psMatched: !!(playSportMarket && playSportMarket._uniqueMatch),
+    espnScoreboardFailed: false,            /* 有這場的 event 就代表賽程抓到了 */
+    usEastDelta: (!usDay || !todayUs) ? 0 : (usDay > todayUs ? 1 : (usDay < todayUs ? -1 : 0)),   /* 覆審 B-2 */
+    usTotal: ctx?.usTotal ?? null,
+    psIntlTotal: legs2026Num(playSportMarket?.usTotal),   /* 覆審 N-2:跟雲端一樣要有這個事實 */
+    spFetchFailed: leagueKey === 'mlb' && mlbProbSpFetchFailed,
+    favName: fav,
+    favNameNotInStatsTable: !!(leagueKey === 'mlb' && fav && statsNames && !statsNames.has(fav)),
+    favStarter: spRaw ? (spRaw.dh ? { dh:true } : spRaw) : {},
+    histFailed: false,
+    gamesAway: legs2026Num(left?.gamesCount), gamesHome: legs2026Num(right?.gamesCount),
+    formFailDays: failDays
+  };
 }
 function legs2026EvaluateOperational(leagueKey, ctx){
   const lk = String(leagueKey || '').toLowerCase();
@@ -4048,9 +4227,21 @@ function legs2026MaterializePure(meta, rawResults, ctx, nowMs, inputRows=[]){
     /* 已開賽/完賽 → 沿用最後一次賽前判定 */
     if (!gate.allowed) {
       if (old) { canonical.push(legs2026FrozenResultFromRow(old)); continue; }
-      canonical.push(raw.status === 'BET'
-        ? { ...raw, status:'NEED', need:[gate.reason], why:gate.reason }
-        : { ...raw });
+      /* 2026-09-17(Joe:「都 5:20 了怎麼會還沒開打」):比賽已經開打/打完,還把它列在「資料不足」裡,
+         而且缺項寫的是賽前那份(台盤、美盤…)—— 那句話是錯的:資料不是沒抓到,是這場已經沒得下了。
+         雲端 09-02 就改成 LATE(已開賽/已完賽),網頁一直沒跟。這裡對齊:
+           BET / NEED 且已開打 → LATE,理由寫「已開賽」或「已完賽」;
+           只有「開賽時間無效」才還算 NEED(那是真的不知道,不是來不及)。 */
+      const ev = meta?.event || {};
+      const evCompleted = ev?.status?.type?.completed === true || String(ev?.status?.type?.state || '').toLowerCase() === 'post';
+      const lateReason = gate.reason === '開賽時間無效' ? '' : (evCompleted ? '已完賽' : '已開賽');
+      if (lateReason && (raw.status === 'BET' || raw.status === 'NEED')) {
+        canonical.push({ ...raw, status:'LATE', why:lateReason, need:[] });
+      } else {
+        canonical.push(raw.status === 'BET'
+          ? { ...raw, status:'NEED', need:[gate.reason], why:gate.reason }
+          : { ...raw });
+      }
       continue;
     }
 
@@ -4586,6 +4777,13 @@ function buildNear10Card(leagueName, leagueKey, event, teamStatsMap, playSportMa
   const legsRawResults = legs2026EvaluateOperational(leagueKey, legsCtx);
   const legsState = legs2026Commit({ league:leagueName, eventId:gameId, event }, legsRawResults, legsCtx);
   const legsResults = legsState.results;
+  /* 2026-09-16 原因層:對**最終**的 NEED(commit 之後,gate 可能改寫過 need)標原因。只加欄位,不改狀態。 */
+  try {
+    const facts = legs2026NeedFacts(leagueKey, legsCtx, event, playSportMarkets, playSportMarket, left, right);
+    for (const r of (legsResults || [])) {
+      if (r && r.status === 'NEED' && Array.isArray(r.need) && r.need.length) r.needWhy = legs2026NeedWhy(leagueKey, r.need, facts);
+    }
+  } catch (e) { console.warn('原因層失敗(不影響判定)', e); }
   legs2026PanelEntries.set(`${leagueKey}|${gameId}`, {
     leagueKey,
     leagueName,
