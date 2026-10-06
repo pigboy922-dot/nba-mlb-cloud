@@ -389,7 +389,7 @@
       <label class="league-toggle"><input type="checkbox" id="mlbToggle" checked> MLB</label>
       <button class="btn-primary" id="todayBtn">更新今天</button>
       <button class="btn-secondary" id="tomorrowBtn">更新明天</button>
-      <div class="window-note hidden" id="windowNote">【v62 2026-09-06】目前顯示：MLB＝W2′(大小分,偏離門檻 0.4,偏離≥0.8 注碼 1.6 倍)＋E1∪H7(讓分)；NBA＝A軌六腿(只用台盤)。NBA T1′ 已停用——它要美盤收盤線,而收盤就是停止下注,只用開盤線是 −26.2 單位/季。水位固定 0.95。缺盤口或資料不足一律標示 NEED 並不出手；雙重賽整組PASS。｜<b>賽前每次按更新都重新判定:跳盤後不再符合就自動取消,不再推薦、不進統計、雲端寫回 PASS;還符合的才保留並在賽後補最終比分。</b>戰績列含勝率／ROI／最長連敗;F12 主控台:LEGS2026_LEDGER.report()、.exportCsv()。戰績列同時顯示「訊號」(策略表現)與「實下」(你真實表現)。F12 主控台:LEGS2026_LEDGER.report() 完整報表、.exportCsv() 逐注 CSV。</div>
+      <div class="window-note hidden" id="windowNote">【v63 2026-10-06】目前顯示：MLB＝W2′(大小分,偏離門檻 0.4;<b>距開賽超過 4 小時(早買)門檻 0.5</b>,偏離≥0.8 注碼 1.6 倍;卡片另顯示台盤/美盤各自多久沒動與「與先前推薦相反」,只顯示不改判定)＋E1∪H7(讓分)；NBA＝A軌六腿(只用台盤)。NBA T1′ 已停用——它要美盤收盤線,而收盤就是停止下注,只用開盤線是 −26.2 單位/季。水位固定 0.95。缺盤口或資料不足一律標示 NEED 並不出手；雙重賽整組PASS。｜<b>賽前每次按更新都重新判定:跳盤後不再符合就自動取消,不再推薦、不進統計、雲端寫回 PASS;還符合的才保留並在賽後補最終比分。</b>戰績列含勝率／ROI／最長連敗;F12 主控台:LEGS2026_LEDGER.report()、.exportCsv()。戰績列同時顯示「訊號」(策略表現)與「實下」(你真實表現)。F12 主控台:LEGS2026_LEDGER.report() 完整報表、.exportCsv() 逐注 CSV。</div>
       <div class="status muted" id="status">尚未更新</div>
       <div class="status muted" id="cloudStatus">雲端寫入：待命</div>
       <div class="status muted" id="playsportStatus">Playsport盤口：待命</div>
@@ -456,7 +456,7 @@ const CONFIG = {
   nba: { key:'nba', name:'NBA', sport:'basketball', league:'nba', lookbackDays:40, totalEdge:8, spreadEdge:3.5, highTotal:235 },
   mlb: { key:'mlb', name:'MLB', sport:'baseball', league:'mlb', lookbackDays:25, totalEdge:1.2, spreadEdge:0.8, highTotal:11.5 }
 };
-const APP_BUILD_ID = '2026-09-06 LEGS2026-v62 (資料層修 ①~⑧ + 第五輪 R-1~R-17;判定規則與門檻同 v6.1 未動)';   /* v62:版本字串要出現在「策略版本」那行,不然看不出換了哪一份 */
+const APP_BUILD_ID = '2026-10-06 LEGS2026-v63 (W2′ 早買 >4h 門檻 0.5 + 盤口穩定度 + 與先前推薦相反;其餘同 v62)';   /* v62:版本字串要出現在「策略版本」那行,不然看不出換了哪一份 */
 const MLB_TW_LOTTERY_RUNLINE_SOURCE_LABEL = '新邏輯：運彩盤 -1.5';
 const MLB_TW_LOTTERY_RUNLINE_SOURCE_RE = /新邏輯|甜盤|台彩|運彩|twlottery|lottery|runline|-1\.5/i;
 const ACTIVE_STRATEGY_SUMMARY = [
@@ -3432,6 +3432,13 @@ const LEGS2026 = (function () {
   const SL_MLB_TOTAL = 0.089;          // MLB 大小分公平線斜率(φ(0)/σ, σ≈4.48 分)
   const W2P_DEV_MIN  = 0.4;            // W2′ 出手門檻(2026-08-26 由 0.3 上調)
   const W2P_BIG_DEV  = 0.8;            // 偏離 ≥ 此值 → 注碼 1.6 倍
+  /* 2026-10-06 v63「早買加嚴」:判定時距開賽 **嚴格大於** 4 小時 → 門檻 0.5(與雲端 engine.py 同語意)。
+     ctx 沒有 startIso 這個鍵 = 呼叫端不知道這個功能(回測重現)→ 不套。網頁沒有「美盤首見」資料,所以只有早買這一條加嚴。
+     顯示字樣(早買 / 穩定度 / 相反)一律不進 detail / ctx → 帳本 decisionAt 不會被重蓋。 */
+  const W2P_EARLY_HOURS = 4.0;
+  const W2P_DEV_MIN_EARLY = 0.5;
+  /* 盤口穩定度(只顯示):兩邊都 ≥ 30 分鐘沒動且觀察跨度 ≥ 30 才標穩定;美盤動 = us_total 變動或公平線變動 ≥ 0.15 */
+  const STAB_MIN_IDLE = 30.0, STAB_FAIR_MOVE = 0.15, STAB_STALE_MIN = 35.0;
   const num = v => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v))) ? null : Number(v);
   const between = (x, a, b) => x !== null && x >= a && x <= b;
 
@@ -3488,6 +3495,107 @@ const LEGS2026 = (function () {
   }
   const R9 = x => (x === null ? null : Math.round(x * 1e9) / 1e9);
 
+  /* ------------------------------------------- 2026-10-06 早買 / 穩定度 / 相反(與 engine.py 同語意) */
+  /* ISO 字串或毫秒數 → 毫秒;解析不了 = null */
+  function isoMs(v) {
+    if (v === null || v === undefined || v === '') return null;
+    if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+    const t = Date.parse(String(v).trim());
+    return Number.isFinite(t) ? t : null;
+  }
+  const pad2 = n => String(n).padStart(2, '0');
+  const fmtG = x => String(Number(Number(x).toFixed(6)));          // 等同 Python 的 {x:g}(夠用的範圍)
+  /* 台北時間 HH:MM;跟「判定時間」不在同一個台北日 → 前面加「MM/DD 」 */
+  function tpeText(targetMs, atMs) {
+    const T = new Date(targetMs + 8 * 3600e3), A = new Date(atMs + 8 * 3600e3);
+    const hm = `${pad2(T.getUTCHours())}:${pad2(T.getUTCMinutes())}`;
+    const sameDay = T.getUTCFullYear() === A.getUTCFullYear() && T.getUTCMonth() === A.getUTCMonth() && T.getUTCDate() === A.getUTCDate();
+    return sameDay ? hm : `${pad2(T.getUTCMonth() + 1)}/${pad2(T.getUTCDate())} ${hm}`;
+  }
+  /* 回 { early: true|false|null, hours, note, until, untilTpe };null = 規則不適用(沒 startIso 鍵 / 解析不了) */
+  function w2pEarly(c) {
+    const none = { early: null, hours: null, note: '', until: '', untilTpe: '' };
+    if (!c || !Object.prototype.hasOwnProperty.call(c, 'startIso')) return none;
+    const start = isoMs(c.startIso);
+    if (start === null) return none;
+    const at = isoMs(c.decidedAt) ?? Date.now();
+    const secs = (start - at) / 1000;
+    const hours = Math.round(secs / 3600 * 100) / 100;
+    if (secs <= W2P_EARLY_HOURS * 3600) return { early: false, hours, note: '', until: '', untilTpe: '' };
+    const untilMs = start - W2P_EARLY_HOURS * 3600e3;
+    const txt = tpeText(untilMs, at);
+    const note = `距開賽 ${(secs / 3600).toFixed(1)} 小時(超過 ${fmtG(W2P_EARLY_HOURS)}),早買加嚴,門檻 ${W2P_DEV_MIN_EARLY.toFixed(1)}`
+               + `,約 ${txt}(台北)後門檻回到 ${W2P_DEV_MIN.toFixed(1)}`;
+    return { early: true, hours, note, until: new Date(untilMs).toISOString().replace(/\.\d{3}Z$/, 'Z'), untilTpe: txt };
+  }
+  function w2pThrNote(early, dmin) {
+    if (!early) return '';
+    return `門檻 ${dmin.toFixed(1)}:早買(距開賽超過 ${fmtG(W2P_EARLY_HOURS)} 小時)`;
+  }
+  /* 美盤公平線 = 美盤 + 賠率修正;缺線或缺賠率 = null */
+  function usFair(c) {
+    const us = num(c && c.usTotal), p = pOver(c && c.usOverOdds, c && c.usUnderOdds);
+    if (us === null || p === null) return null;
+    return us + (p - 0.5) / SL_MLB_TOTAL;
+  }
+  function idleMinutes(pts, moved, nowT) {
+    if (pts.length < 2) return null;   /* 單一觀察不構成「沒動」 */
+    let lastMove = pts[0].t;
+    for (let i = 1; i < pts.length; i++) if (moved(pts[i - 1], pts[i])) lastMove = pts[i].t;
+    const lastObs = pts[pts.length - 1].t;
+    const ref = (nowT - lastObs) <= STAB_STALE_MIN * 60 ? nowT : lastObs;
+    return Math.max(0, (ref - lastMove) / 60);
+  }
+  /* rows:[{at, us_total, fair, tw_total, side}](任何順序;at = ISO 或毫秒)。回 {state:'new'|'moving'|'stable', n, twIdleMin, usIdleMin, spanMin, text} */
+  function stabAnalyze(rows, now) {
+    const nowMs = (isoMs(now) ?? Date.now());
+    const nowT = nowMs / 1000;
+    const recs = [];
+    for (const r of (rows || [])) {
+      const t = isoMs(r && r.at);
+      if (t !== null) recs.push({ t: t / 1000, us: num(r.us_total), fair: num(r.fair), tw: num(r.tw_total) });
+    }
+    recs.sort((a, b) => a.t - b.t);
+    if (recs.length < 2)
+      return { state: 'new', n: recs.length, twIdleMin: null, usIdleMin: null, spanMin: 0, text: '盤口:剛開始觀察' };
+    const twPts = recs.filter(r => r.tw !== null).map(r => ({ t: r.t, v: r.tw, f: null }));
+    const usPts = recs.filter(r => r.us !== null).map(r => ({ t: r.t, v: r.us, f: r.fair }));
+    const twMoved = (a, b) => Math.abs(a.v - b.v) > 1e-9;
+    const usMoved = (a, b) => {
+      if (Math.abs(a.v - b.v) > 1e-9) return true;
+      return a.f !== null && b.f !== null && Math.abs(a.f - b.f) >= STAB_FAIR_MOVE - 1e-9;
+    };
+    const twIdle = idleMinutes(twPts, twMoved, nowT), usIdle = idleMinutes(usPts, usMoved, nowT);
+    const lastT = recs[recs.length - 1].t;
+    const ref = (nowT - lastT) <= STAB_STALE_MIN * 60 ? nowT : lastT;
+    const span = Math.max(0, (ref - recs[0].t) / 60);
+    const ti = twIdle === null ? null : Math.floor(twIdle), ui = usIdle === null ? null : Math.floor(usIdle);
+    const ts = ti === null ? '未知' : `${ti}分`, uss = ui === null ? '未知' : `${ui}分`;
+    const stable = twIdle !== null && usIdle !== null && twIdle >= STAB_MIN_IDLE && usIdle >= STAB_MIN_IDLE && span >= STAB_MIN_IDLE;
+    const text = stable ? `✅ 盤口 台盤${ts}/美盤${uss}沒動(只陳述目前沒動,不代表之後不會動)` : `⏳ 盤口還在動(台盤${ts}/美盤${uss})`;
+    return { state: stable ? 'stable' : 'moving', n: recs.length, twIdleMin: ti, usIdleMin: ui, spanMin: Math.floor(span), text };
+  }
+  /* 目前推薦方向與「先前記錄的推薦方向」相反 → { prevSide, side, prevTw, tw, text },否則 null。只顯示,不改狀態 */
+  const REVERSE_WINDOW_MIN = 60;
+  function w2pReverse(prevRows, side, twNow, now) {
+    if (side !== 'over' && side !== 'under') return null;
+    const nowT = (isoMs(now) ?? Date.now()) / 1000;
+    let prior = null, priorT = null;
+    const sorted = (prevRows || []).map((r, i) => ({ r, i, t: isoMs(r && r.at) }))
+      .filter(x => x.t !== null).sort((a, b) => (a.t - b.t) || (a.i - b.i));
+    for (const x of sorted) {
+      if ((x.r.side !== 'over' && x.r.side !== 'under') || x.r.side === side) continue;
+      const d = nowT - x.t / 1000;
+      if (d >= 0 && d <= REVERSE_WINDOW_MIN * 60) { prior = x.r; priorT = x.t / 1000; }
+    }
+    if (!prior) return null;
+    const ago = Math.floor((nowT - priorT) / 60);
+    const a = num(prior.tw_total), b = num(twNow);
+    const twTxt = (a !== null && b !== null) ? (Math.abs(a - b) > 1e-9 ? `台盤 ${fmtG(a)}→${fmtG(b)}` : `台盤 ${fmtG(a)} 沒變`) : '台盤未知';
+    return { prevSide: prior.side, side, prevTw: a, tw: b, agoMin: ago,
+             text: `⚠️ ${ago} 分鐘前還推相反方向(${twTxt})` };
+  }
+
   /* ---------------------------------------------------------------- MLB W2′ */
   function mlbW2P(c) {
     const tw = num(c.twTotal), us = num(c.usTotal), usOpen = num(c.usOpenTotal);
@@ -3515,13 +3623,24 @@ const LEGS2026 = (function () {
     /* 2026-08-26:門檻 0.3 → 0.4(對稱,兩邊同時提高)
        α=0.75 口徑六季:378 注/季、ROI +11.70%、最大回撤 −26%;保留樣本 24-26 同向。
        同時導入注碼分級:偏離 <0.8 = 基準;≥0.8 = 1.6 倍。 */
-    if (Math.abs(dev) <= W2P_DEV_MIN)
-      return { leg: 'W2′', market: 'totals', status: 'PASS', why: `|偏離| ${Math.abs(dev).toFixed(2)} ≤ ${W2P_DEV_MIN.toFixed(1)}` };
+    /* 2026-10-06 早買加嚴:距開賽 > 4 小時 → 門檻 max(0.4, 0.5)。字樣只放顯示欄位(earlyNote / thrNote),不進 detail。 */
+    const ew = w2pEarly(c);
+    const dmin = ew.early ? Math.max(W2P_DEV_MIN, W2P_DEV_MIN_EARLY) : W2P_DEV_MIN;
+    const earlyFields = ew.early === null ? {} : Object.assign(
+      { early: ew.early, hoursToStart: ew.hours, devMin: dmin },
+      ew.early ? { earlyNote: ew.note, thrNote: w2pThrNote(ew.early, dmin), earlyUntil: ew.until, earlyUntilTpe: ew.untilTpe } : {});
+    if (Math.abs(dev) <= dmin)
+      return Object.assign({ leg: 'W2′', market: 'totals', status: 'PASS',
+        why: `|偏離| ${Math.abs(dev).toFixed(2)} ≤ ${dmin.toFixed(1)}` + (ew.note ? `｜${ew.note}` : '') },
+        ew.early === null ? {} : {
+          passKind: 'near', gap: Math.round((dmin - Math.abs(dev)) * 100) / 100,
+          side: dev > 0 ? 'under' : 'over', pick: dev > 0 ? '小分' : '大分',
+          baseWouldBet: Math.abs(dev) > W2P_DEV_MIN }, earlyFields);
     const side = dev > 0 ? 'under' : 'over';
     const adev = Math.abs(dev);
     const stakeMul  = adev >= W2P_BIG_DEV ? 1.6 : 1.0;
     const stakeText = adev >= W2P_BIG_DEV ? '加碼 1.6 倍' : '基準 1.0 倍';
-    return {
+    return Object.assign({
       leg: 'W2′', market: 'totals', status: 'BET', side,
       pick: side === 'under' ? '小分' : '大分',
       stakeMul, stakeText,
@@ -3530,7 +3649,7 @@ const LEGS2026 = (function () {
               + `｜注碼 ${stakeText}`
               + (mv === null ? '｜無開盤,盤移未檢' : `｜盤移 ${mv.toFixed(2)}`)
               + `｜ERA和 ${(ae !== null && he !== null) ? (ae + he).toFixed(2) : '缺值(照下)'}`
-    };
+    }, earlyFields);
   }
 
   /* ------------------------------------------------------------ MLB E1∪H7 */
@@ -3663,7 +3782,8 @@ const LEGS2026 = (function () {
     if (lk === 'nba') return nbaTrackA(c);   // T1′ 已停用:只用開盤線是 −26.2 單位/季、1/6 季正,要 α≥0.61 才損平
     return [];
   }
-  return { W, evalGame, mlbW2P, mlbE1H7, nbaTrackA, nbaT1P, imp, pOver, tierOf, twLineKeyFromText, TW_LINE, R9, gridLine };
+  return { W, evalGame, mlbW2P, mlbE1H7, nbaTrackA, nbaT1P, imp, pOver, tierOf, twLineKeyFromText, TW_LINE, R9, gridLine,
+           w2pEarly, w2pThrNote, usFair, stabAnalyze, w2pReverse, W2P_EARLY_HOURS, W2P_DEV_MIN_EARLY, W2P_DEV_MIN, STAB_MIN_IDLE };
 })();
 /* 2026-08-29 修 v6-1(critical):R9 是 LEGS2026 IIFE 的閉包私有變數,而 buildLegs2026Context 是頂層
    函式 —— 修 #6 在 3426 包了一層 R9(...) 造成 ReferenceError。三元條件是「五個值全有才呼叫」,
@@ -3857,6 +3977,10 @@ function buildLegs2026Context(leagueKey, left, right, market, playSportMarket, u
     const aEra = legs2026Num(legs2026StarterFor(away?.name, usDay)?.era3);
     const hEra = legs2026Num(legs2026StarterFor(home?.name, usDay)?.era3);
     ctx.awayEra3 = aEra; ctx.homeEra3 = hEra;
+    /* 2026-10-06 v63 早買加嚴:開賽時間(UTC ISO)與判定時間。引擎用 decidedAt 算「距開賽幾小時」。只給判定與顯示,不進帳本 context。 */
+    { const _st = event?.date ? new Date(event.date) : null;
+      ctx.startIso = (_st && Number.isFinite(_st.getTime())) ? _st.toISOString().replace(/\.\d{3}Z$/, 'Z') : null;
+      ctx.decidedAt = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'); }
     ctx.favEra3 = taiwanFavoriteSide ? (favIsHome ? hEra : aEra) : null;
     ctx.dogEra3 = taiwanFavoriteSide ? (favIsHome ? aEra : hEra) : null;
     const fn5 = taiwanFavoriteSide ? legs2026Win(fav, 5, 'net') : null;
@@ -3910,6 +4034,20 @@ function renderLegs2026Html(results, ctx, leagueKey, left, right, market, playSp
     if (r.market==='spread') return r.side==='give' ? (ctx.favName||'讓分方') : (ctx.dogName||'受讓方');
     return r.pick;
   };
+  /* 2026-10-06 v63:W2′ 的早買加嚴 / 盤口穩定度 / 與先前推薦相反三行。全部只讀顯示欄位,字樣與 LINE 卡片一致。 */
+  const w2pExtraHtml = r => {
+    if (!r || r.leg !== 'W2′') return '';
+    const lines = [];
+    if (r.early) {
+      lines.push({ t: r.freshHold
+        ? `⏱ 早買加嚴(門檻已拉到 0.5)—— 這注是加嚴前就推薦的,照原推薦保留｜${r.earlyNote || ''}`
+        : `⏱ ${r.earlyNote || '早買加嚴,門檻 0.5'}`, c: '#b45309' });
+    }
+    if (r.stabText) lines.push({ t: r.stabText, c: (r.stab && r.stab.state === 'stable') ? '#15803d' : '#64748b' });
+    if (r.reverseText) lines.push({ t: r.reverseText, c: '#b45309' });
+    return lines.map(l => `<div style="font-size:10.5px;color:${l.c};margin-top:2px;">${esc(l.t)}</div>`).join('');
+  };
+  const nearW2p = results.filter(r => r.leg==='W2′' && r.status==='PASS' && r.passKind==='near');
   let html = '';
   if (bets.length){
     html += `<div style="font-weight:800;margin-bottom:4px;">出手 ${bets.length} 注</div>`;
@@ -3919,6 +4057,7 @@ function renderLegs2026Html(results, ctx, leagueKey, left, right, market, playSp
           <span style="opacity:.65;font-weight:600;font-size:11px;">(${r.market==='spread'?'讓分':'大小分'}｜水位 0.95)</span>
           ${r.stakeMul ? `<span style="margin-left:6px;padding:1px 6px;border-radius:3px;font-size:11px;font-weight:800;background:${r.stakeMul>=1.6?'#f59e0b':'#94a3b8'};color:#fff;">${esc(r.stakeText||'')}</span>` : ''}</div>
         <div style="font-size:11px;opacity:.8;margin-top:2px;">${esc(r.detail||'')}</div>
+        ${w2pExtraHtml(r)}
         ${displayWarning(r) ? `<div style="font-size:10.5px;color:#b45309;margin-top:2px;">⚠ ${esc(displayWarning(r))}</div>` : ''}
       </div>`).join('');
   } else {
@@ -3933,6 +4072,14 @@ function renderLegs2026Html(results, ctx, leagueKey, left, right, market, playSp
       <div style="border-left:3px solid #d97706;padding:3px 8px;margin:3px 0;background:rgba(217,119,6,.08);border-radius:4px;font-size:11px;">
         <b>${esc(r.leg)}</b> 資料不足:${esc((r.need||[]).join('、'))} — <b>不出手</b>
         ${(r.needWhy||[]).map(w=>`<div style="opacity:.8;padding-left:8px;">↳ <b>${esc(w.kindZh)}</b>｜${esc(w.item)}:${esc(w.why)}</div>`).join('')}
+      </div>`).join('');
+  }
+  if (nearW2p.length){
+    html += nearW2p.map(r=>`
+      <div style="border-left:3px solid #2563eb;padding:3px 8px;margin:3px 0;background:rgba(37,99,235,.06);border-radius:4px;font-size:11px;">
+        👀 <b>${esc(r.leg)}</b> 觀察　方向 ${esc(r.pick||'')}　還差 ${esc(r.gap)}${r.early ? '　⏱早買(門檻 ' + esc(r.devMin) + ')' : ''}
+        ${r.baseWouldBet ? `<div style="font-size:10.5px;color:#b45309;margin-top:2px;">平常門檻 0.4 會推${r.earlyUntilTpe ? `｜約 ${esc(r.earlyUntilTpe)}(台北)後門檻回到 0.4,再按更新` : ''}</div>` : ''}
+        ${w2pExtraHtml(r)}
       </div>`).join('');
   }
   if (passes.length){
@@ -4194,6 +4341,114 @@ function legs2026SetPlaced(key, placed, actualLine){
   if (typeof updateRecordSummary === 'function') { try { updateRecordSummary(); } catch (e) {} }
   return true;
 }
+/* 2026-10-06 v63:這一輪判定的「早買加嚴」顯示欄位(只給畫面,不寫帳本)。沒用到就是空的。 */
+function legs2026LiveExtras(raw){
+  const out = {};
+  for (const k of ['early','hoursToStart','devMin','earlyNote','thrNote','earlyUntil','earlyUntilTpe','baseWouldBet']) {
+    if (raw && raw[k] !== undefined && raw[k] !== null) out[k] = raw[k];
+  }
+  return out;
+}
+/* ---- 2026-10-06 v63 盤口歷史(瀏覽器 localStorage;網頁沒有 VM 的 line_hist)----
+   key = legs2026_hist_<league>|<gameId>;每列 {at(ISO), us_total, fair, tw_total, side};
+   每場最多 30 筆、只留 3 天內;只記開賽前、同一分鐘就地合併(語意同 ledger.record_line_hist)。
+   所有 storage 存取包 try/catch:讀不到 / 寫不進 → 當作沒有紀錄(畫面顯示「剛開始觀察」),判定不受影響。 */
+const LEGS2026_HIST_PREFIX = 'legs2026_hist_';
+const LEGS2026_HIST_MAX = 30;
+const LEGS2026_HIST_KEEP_MS = 3 * 86400e3;
+function legs2026HistStore(){
+  try { return (typeof localStorage !== 'undefined') ? localStorage : null; } catch (e) { return null; }
+}
+function legs2026HistKey(leagueKey, gameId){
+  return LEGS2026_HIST_PREFIX + String(leagueKey || '').toLowerCase() + '|' + String(gameId || '');
+}
+function legs2026HistRead(key, nowMs, storage){
+  try {
+    const st = storage === undefined ? legs2026HistStore() : storage;
+    if (!st) return [];
+    const rows = JSON.parse(st.getItem(key) || '[]');
+    if (!Array.isArray(rows)) return [];
+    return rows.filter(r => r && typeof r === 'object' && Number.isFinite(Date.parse(r.at))
+      && (nowMs - Date.parse(r.at)) <= LEGS2026_HIST_KEEP_MS);
+  } catch (e) { return []; }
+}
+/* 超過上限時:先丟「夾在兩筆完全相同紀錄中間」的(不影響最後動的時間、最早時間、最後觀察),還超過才丟最舊的 */
+function legs2026HistCompact(rows, max){
+  const same = (a, b) => a.us_total === b.us_total && a.tw_total === b.tw_total && a.fair === b.fair && (a.side || '') === (b.side || '');
+  const out = rows.slice();
+  for (let i = 1; i < out.length - 1 && out.length > max;) {
+    if (same(out[i - 1], out[i]) && same(out[i], out[i + 1])) out.splice(i, 1); else i++;
+  }
+  while (out.length > max) out.shift();
+  return out;
+}
+/* 記一筆(開賽前才記)。回 { before:[寫入前的紀錄], rows:[寫入後的紀錄], wrote:boolean } */
+function legs2026HistRecord(leagueKey, gameId, startMs, ctx, side, nowMs, storage){
+  const key = legs2026HistKey(leagueKey, gameId);
+  const st = storage === undefined ? legs2026HistStore() : storage;
+  const before = legs2026HistRead(key, nowMs, st);
+  const res = { before, rows: before, wrote: false };
+  try {
+    if (!st || !Number.isFinite(startMs) || nowMs >= startMs) return res;
+    const num = v => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v))) ? null : Number(v);
+    const us = num(ctx?.usTotal), tw = num(ctx?.twTotal);
+    if (us === null && tw === null) return res;
+    const fairRaw = us !== null ? LEGS2026.usFair(ctx) : null;
+    const nr = { at: new Date(nowMs).toISOString(), us_total: us, fair: fairRaw === null ? null : fairRaw,
+                 tw_total: tw, side: (side === 'over' || side === 'under') ? side : '' };
+    const rows = before.slice();
+    const last = rows.length ? rows[rows.length - 1] : null;
+    if (last && String(last.at).slice(0, 16) === nr.at.slice(0, 16)) {      // 同一分鐘 → 就地合併
+      if (nr.us_total === null) { nr.us_total = last.us_total; nr.fair = last.fair; }
+      if (nr.tw_total === null) nr.tw_total = last.tw_total;
+      if (!nr.side) nr.side = last.side || '';
+      nr.at = last.at;
+      rows[rows.length - 1] = nr;
+    } else {
+      rows.push(nr);
+    }
+    const kept = legs2026HistCompact(rows, LEGS2026_HIST_MAX);
+    st.setItem(key, JSON.stringify(kept));
+    res.rows = kept; res.wrote = true;
+  } catch (e) { /* 寫不進(空間滿 / 私密視窗)→ 不影響判定,畫面用寫入前的紀錄 */ }
+  return res;
+}
+/* 清掉過期的歷史 key(每次載入頁面做一次;全部 try/catch) */
+function legs2026HistPurge(nowMs, storage){
+  try {
+    const st = storage === undefined ? legs2026HistStore() : storage;
+    if (!st) return 0;
+    const keys = [];
+    for (let i = 0; i < st.length; i++) { const k = st.key(i); if (k && k.startsWith(LEGS2026_HIST_PREFIX)) keys.push(k); }
+    let n = 0;
+    for (const k of keys) {
+      let rows = [];
+      try { rows = JSON.parse(st.getItem(k) || '[]'); } catch (e) { rows = []; }
+      const newest = Array.isArray(rows) ? Math.max(0, ...rows.map(r => Date.parse(r && r.at) || 0)) : 0;
+      if (!newest || (nowMs - newest) > LEGS2026_HIST_KEEP_MS) { st.removeItem(k); n++; }
+    }
+    return n;
+  } catch (e) { return 0; }
+}
+/* 在 commit 之後替 W2′ 那一腿掛上穩定度 / 相反顯示欄位。**只加顯示欄位**:不改 status、不碰 detail / 帳本。 */
+function legs2026AnnotateStab(leagueKey, gameId, event, ctx, rawResults, results, nowMs=Date.now(), storage){
+  try {
+    if (String(leagueKey).toLowerCase() !== 'mlb') return;
+    const v = (results || []).find(r => r && r.leg === 'W2′');
+    if (!v) return;
+    const w = (rawResults || []).find(r => r && r.leg === 'W2′');
+    const side = (w && w.status === 'BET' && (w.side === 'over' || w.side === 'under')) ? w.side : '';
+    const startMs = Date.parse(event?.date || '');
+    const h = legs2026HistRecord(leagueKey, gameId, startMs, ctx, side, nowMs, storage);
+    const st = LEGS2026.stabAnalyze(h.rows, new Date(nowMs).toISOString());
+    v.stab = st; v.stabText = st.text;
+    if (side) {
+      const rv = LEGS2026.w2pReverse(h.before, side, ctx?.twTotal, new Date(nowMs).toISOString());
+      if (rv) { v.reverse = rv; v.reverseText = rv.text; }
+    }
+  } catch (e) { console.warn('盤口穩定度失敗(不影響判定)', e); }
+}
+try { legs2026HistPurge(Date.now()); } catch (e) {}   /* 載入時清掉超過 3 天的盤口歷史 */
 function legs2026MaterializePure(meta, rawResults, ctx, nowMs, inputRows=[]){
   /* 2026-08-26 改版 —— 賽前一律重算，不再「第一次看到就永久凍結」。
    *   · 還在賽前(gate.allowed):每次開都用當下盤口重新判定
@@ -4247,6 +4502,12 @@ function legs2026MaterializePure(meta, rawResults, ctx, nowMs, inputRows=[]){
 
     /* --- 以下都是「賽前、未下注」→ 一律以當下重算為準 --- */
     if (raw.status !== 'BET') {
+      /* 2026-10-06 v63:早買加嚴只影響**新判定**。舊門檻 0.4 下已經推薦過的注,不因門檻拉到 0.5 就被取消
+         (那不是跳盤,是規則版本換了)—— 原樣保留、不改帳本內容(decisionAt 也不動),畫面標「照原推薦保留」。 */
+      if (old && old.status !== 'CANCELLED' && raw.status === 'PASS' && raw.baseWouldBet === true) {
+        canonical.push({ ...legs2026FrozenResultFromRow(old), ...legs2026LiveExtras(raw), freshHold: true });
+        continue;
+      }
       /* 2026-08-29 修 #5:NEED(上游抓不到資料)與 PASS(規則真的不符)不是同一件事。
          NEED 是暫時性網路狀態 —— 一次 Playsport 中斷就把合法訊號標成「跳盤取消」,
          而 CANCELLED 被統計/結算/雲端全部排除 ⇒ 存活者偏差。只有 PASS 才取消。 */
@@ -4311,7 +4572,7 @@ function legs2026MaterializePure(meta, rawResults, ctx, nowMs, inputRows=[]){
       delete old.dataGapAt; delete old.dataGapReason;
       old.reEvaluated = true;
       if (wasCancelled) created.push({ ...old });
-      canonical.push(legs2026FrozenResultFromRow(old));
+      canonical.push({ ...legs2026FrozenResultFromRow(old), ...legs2026LiveExtras(raw) });
       continue;
     }
     const row = Object.assign({
@@ -4324,7 +4585,7 @@ function legs2026MaterializePure(meta, rawResults, ctx, nowMs, inputRows=[]){
       favoriteSide:ctx?.taiwanFavoriteSide ? (ctx?.favIsHome ? 'home' : 'away') : ''
     }, snapshot);
     rows.push(row); existing.set(raw.leg, row); created.push({ ...row });
-    canonical.push(legs2026FrozenResultFromRow(row));
+    canonical.push({ ...legs2026FrozenResultFromRow(row), ...legs2026LiveExtras(raw) });
   }
   /* 這輪完全沒被評到的舊列(例如台盤沒抓到)：賽前一律不當推薦，但保留不刪 */
   for (const [leg, row] of existing) {
@@ -4777,6 +5038,7 @@ function buildNear10Card(leagueName, leagueKey, event, teamStatsMap, playSportMa
   const legsRawResults = legs2026EvaluateOperational(leagueKey, legsCtx);
   const legsState = legs2026Commit({ league:leagueName, eventId:gameId, event }, legsRawResults, legsCtx);
   const legsResults = legsState.results;
+  legs2026AnnotateStab(leagueKey, gameId, event, legsCtx, legsRawResults, legsResults);   /* 2026-10-06 v63:只加顯示欄位 */
   /* 2026-09-16 原因層:對**最終**的 NEED(commit 之後,gate 可能改寫過 need)標原因。只加欄位,不改狀態。 */
   try {
     const facts = legs2026NeedFacts(leagueKey, legsCtx, event, playSportMarkets, playSportMarket, left, right);
